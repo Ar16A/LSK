@@ -4,3 +4,7 @@ class OccipiedEmail(ValueError):
 
 class OccipiedUsername(ValueError):
     pass
+
+
+class OccipiedUsernameAndEmail(ValueError):
+    pass
