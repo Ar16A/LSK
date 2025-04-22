@@ -17,18 +17,23 @@ def newUser(username: str, email: str, password: str) -> User:
     with sqlite3.connect("databases/mainbase.db") as database:
         cursor = database.cursor()
         cursor.execute('''CREATE TABLE IF NOT EXISTS users (
-        id_user INTEGER PRIMARY KEY,
-        username TEXT NOT NULL,
-        email TEXT NOT NULL,
+        id_user INTEGER PRIMARY KEY AUTOINCREMENT,
+        username TEXT NOT NULL UNIQUE,
+        email TEXT NOT NULL UNIQUE,
         password TEXT NOT NULL);''')
-        cursor.execute("SELECT username, email FROM users")
-        for elem in cursor.fetchall():
-            if elem[0] == username:
-                raise OccipiedUsername
-            if elem[1] == email:
-                raise OccipiedEmail
-        cursor.execute("SELECT id_user FROM users")
-        cursor.execute('''INSERT INTO users (id_user, username, email, password)
-        VALUES (?, ?, ?, ?)''',
-                       (cursor.fetchall()[-1][0] + 1, username, email, password))
+        cursor.execute("SELECT username, email FROM users WHERE username = ? OR email = ?", (username, email))
+        check = cursor.fetchone()
+        if check is not None:
+            match int(check[0] == username) + int(check[1] == email) * 2:
+                case 3:
+                    raise OccipiedUsernameAndEmail
+                case 2:
+                    raise OccipiedEmail
+                case 1:
+                    raise OccipiedUsername
+                case 0:
+                    pass
+        cursor.execute('''INSERT INTO users (username, email, password)
+        VALUES (?, ?, ?)''',
+                       (username, email, password))
         return User(username, email, password)
