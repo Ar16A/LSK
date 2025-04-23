@@ -19,20 +19,18 @@ class User:
         self.password = password
 
     def ListNotes(self) -> list:
+        """Получение заметок пользователя\n
+                        Возвращает список кортежей:\n
+                        1-ый элемент кортежа - id заметки,\n
+                        2-ой - название"""
         with sqlite3.connect(f"databases/notes.db") as note:
             cursor = note.cursor()
             cursor.execute(f"SELECT * FROM id_{self.id_user}")
             return cursor.fetchall()
 
-    def Notes(self) -> list:
-        """Получение заметок пользователя\n
-                Возвращает список кортежей:\n
-                1-ый элемент кортежа - id заметки,\n
-                2-ой - название"""
-        pass
-
-    def findNote(self, id_note: int) -> str:
-        pass
+    def textFromNote(self, id_note: int) -> str:
+        with open(f"notes/{self.id_user}_{id_note}.txt", 'r', encoding="UTF-8") as note:
+            return note.read()
 
 
     def saveNote(self, cur_note: Note) -> None:
@@ -50,7 +48,6 @@ class User:
             cur_note = Note(cursor.fetchone()[0], name, text)
         self.saveNote(cur_note)
         return cur_note
-
 
 
 def newUser(username: str, email: str, password: str) -> User:
