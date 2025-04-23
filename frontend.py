@@ -8,6 +8,9 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtGui import QFont, QIcon
 from PyQt6.QtCore import Qt, QSize
 
+from LSK.user import newUser
+
+
 # from LSK.errors import OccupiedEmail
 
 
@@ -28,7 +31,6 @@ class StyledButton(QPushButton):
                 background-color: #45a049;
             }
         """)
-
 
 class MainWindow(QMainWindow):
     def __init__(self):
