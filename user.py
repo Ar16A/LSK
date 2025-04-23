@@ -26,11 +26,11 @@ def newUser(username: str, email: str, password: str) -> User:
         if check is not None:
             match int(check[0] == username) + int(check[1] == email) * 2:
                 case 3:
-                    raise OccipiedUsernameAndEmail
+                    raise OccupiedUsernameAndEmail()
                 case 2:
-                    raise OccipiedEmail
+                    raise OccupiedEmail(email)
                 case 1:
-                    raise OccipiedUsername
+                    raise OccupiedUsername(username)
                 case 0:
                     pass
         cursor.execute('''INSERT INTO users (username, email, password)

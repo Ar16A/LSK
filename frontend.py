@@ -8,6 +8,8 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtGui import QFont, QIcon
 from PyQt6.QtCore import Qt, QSize
 
+# from LSK.errors import OccupiedEmail
+
 
 class StyledButton(QPushButton):
     def __init__(self, text):
