@@ -9,11 +9,6 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtGui import QFont
 from PyQt6.QtCore import Qt
 
-from LSK.user import newUser
-
-
-# from LSK.errors import OccupiedEmail
-
 
 class StyledButton(QPushButton):
     def __init__(self, text):

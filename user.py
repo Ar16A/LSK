@@ -21,7 +21,7 @@ class User:
     def ListNotes(self) -> list:
         with sqlite3.connect(f"databases/notes.db") as note:
             cursor = note.cursor()
-            cursor.execute("SELECT * FROM ?", (str(self.id_user),))
+            cursor.execute(f"SELECT * FROM id_{self.id_user}")
             return cursor.fetchall()
 
     def Notes(self) -> list:
@@ -42,11 +42,11 @@ class User:
     def newNote(self, name: str, text: str) -> Note:
         with sqlite3.connect(f"databases/notes.db") as note:
             cursor = note.cursor()
-            cursor.execute("SELECT name FROM ? WHERE name = ?", (str(self.id_user), name))
+            cursor.execute(f"SELECT name FROM id_{self.id_user} WHERE name = ?", (name,))
             if cursor.fetchone() is not None:
                 raise OccupiedNameNote(name)
-            cursor.execute("INSERT INTO ? name VALUES (?)", (self.id_user, name))
-            cursor.execute("SELECT MAX(id_note) FROM ?", (self.id_user,))
+            cursor.execute(f"INSERT INTO id_{self.id_user} name VALUES (?)", (name,))
+            cursor.execute(f"SELECT MAX(id_note) FROM id_{self.id_user}")
             cur_note = Note(cursor.fetchone()[0], name, text)
         self.saveNote(cur_note)
         return cur_note
@@ -81,8 +81,8 @@ def newUser(username: str, email: str, password: str) -> User:
 
     with sqlite3.connect(f"databases/notes.db") as note:
         cursor = note.cursor()
-        cursor.execute('''CREATE TABLE IF NOT EXISTS ? (
+        cursor.execute(f'''CREATE TABLE IF NOT EXISTS id_{answer.id_user} (
         id_note INTEGER PRIMARY KEY AUTOINCREMENT,
-        name TEXT UNIQUE)''', (str(answer.id_user),))
+        name TEXT UNIQUE)''')
 
     return answer
