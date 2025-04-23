@@ -3,10 +3,11 @@ import os
 import user
 from PyQt6.QtWidgets import (
     QMainWindow, QApplication, QVBoxLayout, QWidget, QStackedWidget,
-    QLabel, QLineEdit, QPushButton, QTextEdit, QFormLayout, QMessageBox
+    QLabel, QLineEdit, QPushButton, QTextEdit, QFormLayout, QMessageBox,
+    QListWidget, QListWidgetItem, QHBoxLayout, QInputDialog
 )
-from PyQt6.QtGui import QFont, QIcon
-from PyQt6.QtCore import Qt, QSize
+from PyQt6.QtGui import QFont
+from PyQt6.QtCore import Qt
 
 
 class StyledButton(QPushButton):
@@ -32,7 +33,9 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Заметки")
-        self.setMinimumSize(400, 500)
+        self.setMinimumSize(600, 600)
+        self.notes_dir = r"C:\Users\eldor\Рабочий стол\nodes"
+        os.makedirs(self.notes_dir, exist_ok=True)
 
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
@@ -40,9 +43,11 @@ class MainWindow(QMainWindow):
         self.stacked_widget = QStackedWidget()
 
         self.create_registration_page()
+        self.create_notes_list_page()
         self.create_note_page()
 
         self.stacked_widget.addWidget(self.registration_page)
+        self.stacked_widget.addWidget(self.notes_list_page)
         self.stacked_widget.addWidget(self.note_page)
 
         main_layout = QVBoxLayout(central_widget)
@@ -61,6 +66,12 @@ class MainWindow(QMainWindow):
             QLabel {
                 font-size: 14px;
                 color: #333;
+            }
+            QListWidget {
+                color: #333;
+                background-color: white;
+                border: 1px solid #ddd;
+                border-radius: 4px;
             }
         """)
 
@@ -94,16 +105,46 @@ class MainWindow(QMainWindow):
         self.register_btn = StyledButton("Зарегистрироваться")
         self.register_btn.clicked.connect(self.register_user)
 
-        self.edit_note_btn = StyledButton("Изменить заметку")
-        self.edit_note_btn.clicked.connect(lambda: self.stacked_widget.setCurrentIndex(1))
+        self.view_notes_btn = StyledButton("Мои заметки")
+        self.view_notes_btn.clicked.connect(lambda: self.show_notes_list())
 
         layout.addWidget(title)
         layout.addLayout(form_layout)
         layout.addStretch(1)
         layout.addWidget(self.register_btn)
-        layout.addWidget(self.edit_note_btn)
+        layout.addWidget(self.view_notes_btn)
 
         self.registration_page.setLayout(layout)
+
+    def create_notes_list_page(self):
+        self.notes_list_page = QWidget()
+        layout = QVBoxLayout()
+        layout.setSpacing(20)
+        layout.setContentsMargins(30, 30, 30, 30)
+
+        title = QLabel("Мои заметки")
+        title.setFont(QFont("Arial", 16, QFont.Weight.Bold))
+        title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        self.notes_list = QListWidget()
+        self.notes_list.itemDoubleClicked.connect(self.open_note)
+
+        btn_layout = QHBoxLayout()
+
+        self.new_note_btn = StyledButton("Новая заметка")
+        self.new_note_btn.clicked.connect(self.create_new_note)
+
+        self.back_to_reg_btn = StyledButton("Назад")
+        self.back_to_reg_btn.clicked.connect(lambda: self.stacked_widget.setCurrentIndex(0))
+
+        btn_layout.addWidget(self.new_note_btn)
+        btn_layout.addWidget(self.back_to_reg_btn)
+
+        layout.addWidget(title)
+        layout.addWidget(self.notes_list)
+        layout.addLayout(btn_layout)
+
+        self.notes_list_page.setLayout(layout)
 
     def create_note_page(self):
         self.note_page = QWidget()
@@ -118,20 +159,21 @@ class MainWindow(QMainWindow):
         self.note_edit = QTextEdit()
         self.note_edit.setPlaceholderText("Введите текст заметки здесь...")
 
-        btn_layout = QVBoxLayout()
+        btn_layout = QHBoxLayout()
         btn_layout.setSpacing(10)
 
-        self.save_btn = StyledButton("Сохранить заметку")
+        self.save_btn = StyledButton("Сохранить")
         self.save_btn.clicked.connect(self.save_note)
 
-        self.back_btn = StyledButton("Назад к регистрации")
-        self.back_btn.clicked.connect(lambda: self.stacked_widget.setCurrentIndex(0))
+        self.cancel_btn = StyledButton("Отмена")
+        self.cancel_btn.clicked.connect(lambda: self.show_notes_list())
+
+        btn_layout.addWidget(self.save_btn)
+        btn_layout.addWidget(self.cancel_btn)
 
         layout.addWidget(title)
         layout.addWidget(self.note_edit)
         layout.addLayout(btn_layout)
-        layout.addWidget(self.save_btn)
-        layout.addWidget(self.back_btn)
 
         self.note_page.setLayout(layout)
 
@@ -150,6 +192,34 @@ class MainWindow(QMainWindow):
         except Exception as e:
             self.show_message("Ошибка", f"Ошибка регистрации: {str(e)}")
 
+    def show_notes_list(self):
+        self.notes_list.clear()
+
+        notes = [f for f in os.listdir(self.notes_dir) if f.endswith('.txt')]
+
+        for note in sorted(notes):
+            item = QListWidgetItem(note[:-4])
+            item.setData(Qt.ItemDataRole.UserRole, note)
+            self.notes_list.addItem(item)
+
+        self.stacked_widget.setCurrentIndex(1)
+
+    def create_new_note(self):
+        self.current_note_file = None
+        self.note_edit.clear()
+        self.stacked_widget.setCurrentIndex(2)
+
+    def open_note(self, item):
+        note_file = item.data(Qt.ItemDataRole.UserRole)
+        self.current_note_file = os.path.join(self.notes_dir, note_file)
+
+        try:
+            with open(self.current_note_file, 'r', encoding='utf-8') as f:
+                self.note_edit.setText(f.read())
+            self.stacked_widget.setCurrentIndex(2)
+        except Exception as e:
+            self.show_message("Ошибка", f"Не удалось открыть заметку: {str(e)}")
+
     def save_note(self):
         text = self.note_edit.toPlainText()
         if not text.strip():
@@ -157,9 +227,23 @@ class MainWindow(QMainWindow):
             return
 
         try:
-            with open(os.path.expanduser(r"C:\Users\eldor\Рабочий стол\zam1.txt"), "w", encoding="utf-8") as f:
+            if not hasattr(self, 'current_note_file') or not self.current_note_file:
+                note_name, ok = QInputDialog.getText(
+                    self, "Новая заметка", "Введите название заметки:"
+                )
+                if not ok or not note_name.strip():
+                    return
+
+                self.current_note_file = os.path.join(
+                    self.notes_dir,
+                    f"{note_name}.txt"
+                )
+
+            with open(self.current_note_file, 'w', encoding='utf-8') as f:
                 f.write(text)
+
             self.show_message("Успех", "Заметка успешно сохранена!")
+            self.show_notes_list()
         except Exception as e:
             self.show_message("Ошибка", f"Ошибка сохранения: {str(e)}")
 
