@@ -215,7 +215,7 @@ class MainWindow(QMainWindow):
             return
 
         try:
-            user.newUser(username, email, password)
+            user.registerUser(username, email, password)
             self.show_message("Успех", "Пользователь успешно зарегистрирован!")
         except Exception as e:
             self.show_message("Ошибка", f"Ошибка регистрации: {str(e)}")

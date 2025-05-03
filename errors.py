@@ -29,3 +29,24 @@ class OccupiedNameNote(ValueError):
 
     def __str__(self):
         return f"Заметка \"{self.name}\" уже существует. Выберите другое название для заметки"
+
+
+class UserNotExists(ValueError):
+    """Ошибка: пользователя с таким логином нет в БД"""
+    def __init__(self, login):
+        self.login = login
+
+    def __str__(self):
+        return f"Пользователя с {"почтой" if '@' in self.login else "именем"} {self.login} не существует"
+
+
+class IncorrectPassword(ValueError):
+    """Ошибка: введённый пароль не совпадает с паролем из БД"""
+    def __str__(self):
+        return "Неверный пароль"
+
+
+class NotChange(ValueError):
+    """Ошибка: в заметку не было внесено изменений"""
+    def __str__(self):
+        return "Заметка не изменена"
