@@ -14,19 +14,20 @@ class StyledButton(QPushButton):
     def __init__(self, text):
         super().__init__(text)
         self.setMinimumHeight(40)
-        self.setFont(QFont("Arial", 10))
+        self.setFont(QFont("Consolas", 13))
         self.setStyleSheet("""
             QPushButton {
-                background-color: #4CAF50;
+                background: #8A2BE2;
                 color: white;
-                border: none;
+                border: 5px;
                 border-radius: 5px;
-                padding: 8px 16px;
+                padding: 5px;
             }
             QPushButton:hover {
-                background-color: #45a049;
+                background-color: #462255;
             }
         """)
+
 
 class MainWindow(QMainWindow):
     def __init__(self):
@@ -54,23 +55,46 @@ class MainWindow(QMainWindow):
 
         self.setStyleSheet("""
             QMainWindow {
-                background-color: #f5f5f5;
+                background-color: #C0C0C0;
             }
             QLineEdit, QTextEdit {
+                color: white;
+                background-color: black;
                 padding: 8px;
-                border: 1px solid #ddd;
+                border: 1px solid black;
                 border-radius: 4px;
-                font-size: 14px;
+                font-size: 15px;
+                font-family: Consolas;
             }
             QLabel {
-                font-size: 14px;
-                color: #333;
+                font-family: Consolas;
+                font-size: 17px;
+                color: black;
+            }
+            QFormLayout {
+                font-family: Consolas;
             }
             QListWidget {
-                color: #333;
-                background-color: white;
-                border: 1px solid #ddd;
+                color: white;
+                background-color: #C0C0C0;
+                border: 1px solid black;
                 border-radius: 4px;
+                font-family: Consolas;
+            }
+            QListWidget::item {
+                 background-color: #8A2BE2;
+                 border-bottom: 1px solid #C0C0C0;
+                 border-radius: 4px;
+                 font-family: Consolas;
+            }
+            QListWidget::item:hover {
+                background-color: #462255;
+            }
+            QMessageBox {
+                font-family: Consolas;
+            }
+            QInputDialog {
+                font-family: Consolas;
             }
         """)
 
@@ -81,7 +105,7 @@ class MainWindow(QMainWindow):
         layout.setContentsMargins(30, 30, 30, 30)
 
         title = QLabel("Регистрация")
-        title.setFont(QFont("Arial", 16, QFont.Weight.Bold))
+        title.setFont(QFont("Consolas", 19, QFont.Weight.Bold))
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         form_layout = QFormLayout()
@@ -89,13 +113,16 @@ class MainWindow(QMainWindow):
 
         self.username_edit = QLineEdit()
         self.username_edit.setPlaceholderText("Введите имя пользователя")
+        self.username_edit.setFont(QFont("Consolas"))
 
         self.email_edit = QLineEdit()
         self.email_edit.setPlaceholderText("Введите email")
+        self.email_edit.setFont(QFont("Consolas"))
 
         self.password_edit = QLineEdit()
         self.password_edit.setPlaceholderText("Введите пароль")
         self.password_edit.setEchoMode(QLineEdit.EchoMode.Password)
+        self.password_edit.setFont(QFont("Consolas"))
 
         form_layout.addRow("Имя пользователя:", self.username_edit)
         form_layout.addRow("Email:", self.email_edit)
@@ -122,10 +149,11 @@ class MainWindow(QMainWindow):
         layout.setContentsMargins(30, 30, 30, 30)
 
         title = QLabel("Мои заметки")
-        title.setFont(QFont("Arial", 16, QFont.Weight.Bold))
+        title.setFont(QFont("Consolas", 19, QFont.Weight.Bold))
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         self.notes_list = QListWidget()
+        self.notes_list.setFont(QFont("Consolas"))
         self.notes_list.itemDoubleClicked.connect(self.open_note)
 
         btn_layout = QHBoxLayout()
@@ -152,11 +180,12 @@ class MainWindow(QMainWindow):
         layout.setContentsMargins(30, 30, 30, 30)
 
         title = QLabel("Редактор заметок")
-        title.setFont(QFont("Arial", 16, QFont.Weight.Bold))
+        title.setFont(QFont("Consolas", 19, QFont.Weight.Bold))
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         self.note_edit = QTextEdit()
         self.note_edit.setPlaceholderText("Введите текст заметки здесь...")
+        self.note_edit.setFont(QFont("Consolas"))
 
         btn_layout = QHBoxLayout()
         btn_layout.setSpacing(10)
@@ -198,6 +227,7 @@ class MainWindow(QMainWindow):
 
         for note in sorted(notes):
             item = QListWidgetItem(note[:-4])
+            item.setFont(QFont("Consolas"))
             item.setData(Qt.ItemDataRole.UserRole, note)
             self.notes_list.addItem(item)
 
@@ -246,15 +276,17 @@ class MainWindow(QMainWindow):
         except Exception as e:
             self.show_message("Ошибка", f"Ошибка сохранения: {str(e)}")
 
-    def show_message(self, title, message):
+    def show_message(self, title, message) -> None:
         msg_box = QMessageBox()
         msg_box.setWindowTitle(title)
         msg_box.setText(message)
+        msg_box.setFont(QFont("Consolas"))
         msg_box.exec()
 
 
 app = QApplication(sys.argv)
 app.setStyle("Fusion")
+app.setFont(QFont("Consolas"))
 
 window = MainWindow()
 window.show()
