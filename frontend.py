@@ -2,19 +2,96 @@ import sys
 import os
 import user
 from PyQt6.QtWidgets import (
-    QMainWindow, QApplication, QVBoxLayout, QWidget, QStackedWidget,
+    QMainWindow, QApplication, QVBoxLayout, QWidget, QStackedWidget, QTextBrowser,
     QLabel, QLineEdit, QPushButton, QTextEdit, QFormLayout, QMessageBox,
-    QListWidget, QListWidgetItem, QHBoxLayout, QInputDialog
+    QListWidget, QListWidgetItem, QHBoxLayout, QInputDialog, QSplitter
 )
-from PyQt6.QtGui import QFont
-from PyQt6.QtCore import Qt
+from PyQt6.QtGui import QFont, QTextCharFormat, QSyntaxHighlighter, QColor, QTextDocument
+from PyQt6.QtCore import Qt, QRegularExpression
+
+
+class MarkdownHighlighter(QSyntaxHighlighter):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.highlighting_rules = []
+
+        header_formats = []
+        for level in range(1, 7):
+            form = QTextCharFormat()
+            form.setFontWeight(QFont.Weight.Bold)
+            form.setFontPointSize(24 - level * 2)
+            header_formats.append(form)
+
+        self.highlighting_rules.append((QRegularExpression(r"^#\s.+$"), header_formats[0]))
+        self.highlighting_rules.append((QRegularExpression(r"^##\s.+$"), header_formats[1]))
+        self.highlighting_rules.append((QRegularExpression(r"^###\s.+$"), header_formats[2]))
+        self.highlighting_rules.append((QRegularExpression(r"^####\s.+$"), header_formats[3]))
+        self.highlighting_rules.append((QRegularExpression(r"^#####\s.+$"), header_formats[4]))
+        self.highlighting_rules.append((QRegularExpression(r"^######\s.+$"), header_formats[5]))
+
+        bold_format = QTextCharFormat()
+        bold_format.setFontWeight(QFont.Weight.Bold)
+        self.highlighting_rules.append((QRegularExpression(r"\*\*(.*?)\*\*"), bold_format))
+        self.highlighting_rules.append((QRegularExpression(r"__(.*?)__"), bold_format))
+
+        italic_format = QTextCharFormat()
+        italic_format.setFontItalic(True)
+        self.highlighting_rules.append((QRegularExpression(r"\*(.*?)\*"), italic_format))
+        self.highlighting_rules.append((QRegularExpression(r"_(.*?)_"), italic_format))
+
+        strike_format = QTextCharFormat()
+        strike_format.setFontStrikeOut(True)
+        self.highlighting_rules.append((QRegularExpression(r"~~(.*?)~~"), strike_format))
+
+        inline_code_format = QTextCharFormat()
+        inline_code_format.setBackground(QColor("grey"))
+        self.highlighting_rules.append((QRegularExpression(r"`(.+?)`"), inline_code_format))
+
+        block_code_format = QTextCharFormat()
+        block_code_format.setBackground(QColor("grey"))
+        pattern = QRegularExpression(r"```.*?```")
+        pattern.setPatternOptions(QRegularExpression.PatternOption.DotMatchesEverythingOption)
+        self.highlighting_rules.append((pattern, block_code_format))
+
+        link_format = QTextCharFormat()
+        link_format.setForeground(QColor("#8A2BE2"))
+        link_format.setFontUnderline(True)
+        self.highlighting_rules.append((QRegularExpression(r"\[(.+?)\]\(.+?\)"), link_format))
+
+        image_format = QTextCharFormat()
+        image_format.setForeground(QColor("#9055a2"))
+        self.highlighting_rules.append((QRegularExpression(r"!\[(.+?)\]\(.+?\)"), image_format))
+
+        quote_format = QTextCharFormat()
+        quote_format.setForeground(QColor("#6a737d"))
+        quote_format.setFontItalic(True)
+        self.highlighting_rules.append((QRegularExpression(r"^>\s.+$"), quote_format))
+
+        hr_format = QTextCharFormat()
+        hr_format.setForeground(QColor("darkgrey"))
+        self.highlighting_rules.append((QRegularExpression(r"^[-*_]{3,}$"), hr_format))
+
+        list_format = QTextCharFormat()
+        list_format.setForeground(QColor("#8A2BE2"))
+        self.highlighting_rules.append((QRegularExpression(r"^(\s*)[-*+]\s.+$"), list_format))
+        self.highlighting_rules.append((QRegularExpression(r"^(\s*)\d+\.\s.+$"), list_format))
+
+        table_format = QTextCharFormat()
+        table_format.setForeground(QColor("#8A2BE2"))
+        self.highlighting_rules.append((QRegularExpression(r"^\|.+\|$"), table_format))
+
+    def highlightBlock(self, text):
+        for pattern, fmt in self.highlighting_rules:
+            match_iterator = pattern.globalMatch(text)
+            while match_iterator.hasNext():
+                match = match_iterator.next()
+                self.setFormat(match.capturedStart(), match.capturedLength(), fmt)
 
 
 class StyledButton(QPushButton):
     def __init__(self, text):
         super().__init__(text)
         self.setMinimumHeight(40)
-        self.setFont(QFont("Consolas", 13))
         self.setStyleSheet("""
             QPushButton {
                 background: #8A2BE2;
@@ -22,6 +99,7 @@ class StyledButton(QPushButton):
                 border: 5px;
                 border-radius: 5px;
                 padding: 5px;
+                font-size: 17px;
             }
             QPushButton:hover {
                 background-color: #462255;
@@ -33,7 +111,7 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Заметки")
-        self.setMinimumSize(600, 600)
+        self.setMinimumSize(800, 800)
         self.notes_dir = r"C:\Users\eldor\Рабочий стол\nodes"
         os.makedirs(self.notes_dir, exist_ok=True)
 
@@ -64,37 +142,23 @@ class MainWindow(QMainWindow):
                 border: 1px solid black;
                 border-radius: 4px;
                 font-size: 15px;
-                font-family: Consolas;
             }
             QLabel {
-                font-family: Consolas;
                 font-size: 17px;
                 color: black;
-            }
-            QFormLayout {
-                font-family: Consolas;
             }
             QListWidget {
                 color: white;
                 background-color: #C0C0C0;
-                border: 1px solid black;
                 border-radius: 4px;
-                font-family: Consolas;
             }
             QListWidget::item {
                  background-color: #8A2BE2;
-                 border-bottom: 1px solid #C0C0C0;
-                 border-radius: 4px;
-                 font-family: Consolas;
+                 border-bottom: 4px solid #C0C0C0;
+                 border-radius: 10px;
             }
             QListWidget::item:hover {
                 background-color: #462255;
-            }
-            QMessageBox {
-                font-family: Consolas;
-            }
-            QInputDialog {
-                font-family: Consolas;
             }
         """)
 
@@ -105,7 +169,6 @@ class MainWindow(QMainWindow):
         layout.setContentsMargins(30, 30, 30, 30)
 
         title = QLabel("Регистрация")
-        title.setFont(QFont("Consolas", 19, QFont.Weight.Bold))
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         form_layout = QFormLayout()
@@ -113,16 +176,13 @@ class MainWindow(QMainWindow):
 
         self.username_edit = QLineEdit()
         self.username_edit.setPlaceholderText("Введите имя пользователя")
-        self.username_edit.setFont(QFont("Consolas"))
 
         self.email_edit = QLineEdit()
         self.email_edit.setPlaceholderText("Введите email")
-        self.email_edit.setFont(QFont("Consolas"))
 
         self.password_edit = QLineEdit()
         self.password_edit.setPlaceholderText("Введите пароль")
         self.password_edit.setEchoMode(QLineEdit.EchoMode.Password)
-        self.password_edit.setFont(QFont("Consolas"))
 
         form_layout.addRow("Имя пользователя:", self.username_edit)
         form_layout.addRow("Email:", self.email_edit)
@@ -149,11 +209,9 @@ class MainWindow(QMainWindow):
         layout.setContentsMargins(30, 30, 30, 30)
 
         title = QLabel("Мои заметки")
-        title.setFont(QFont("Consolas", 19, QFont.Weight.Bold))
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         self.notes_list = QListWidget()
-        self.notes_list.setFont(QFont("Consolas"))
         self.notes_list.itemDoubleClicked.connect(self.open_note)
 
         btn_layout = QHBoxLayout()
@@ -180,12 +238,22 @@ class MainWindow(QMainWindow):
         layout.setContentsMargins(30, 30, 30, 30)
 
         title = QLabel("Редактор заметок")
-        title.setFont(QFont("Consolas", 19, QFont.Weight.Bold))
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
+        splitter = QSplitter(Qt.Orientation.Vertical)
+
         self.note_edit = QTextEdit()
-        self.note_edit.setPlaceholderText("Введите текст заметки здесь...")
-        self.note_edit.setFont(QFont("Consolas"))
+        self.note_edit.setPlaceholderText("Введите текст заметки здесь... (поддерживается Markdown)")
+
+        self.highlighter = MarkdownHighlighter(self.note_edit.document())
+
+        self.preview = QTextBrowser()
+        self.preview.setOpenExternalLinks(True)
+        self.note_edit.textChanged.connect(self.update_preview)
+
+        splitter.addWidget(self.note_edit)
+        splitter.addWidget(self.preview)
+        splitter.setSizes([400, 200])
 
         btn_layout = QHBoxLayout()
         btn_layout.setSpacing(10)
@@ -200,7 +268,7 @@ class MainWindow(QMainWindow):
         btn_layout.addWidget(self.cancel_btn)
 
         layout.addWidget(title)
-        layout.addWidget(self.note_edit)
+        layout.addWidget(splitter)
         layout.addLayout(btn_layout)
 
         self.note_page.setLayout(layout)
@@ -215,7 +283,7 @@ class MainWindow(QMainWindow):
             return
 
         try:
-            user.registerUser(username, email, password)
+            user.newUser(username, email, password)
             self.show_message("Успех", "Пользователь успешно зарегистрирован!")
         except Exception as e:
             self.show_message("Ошибка", f"Ошибка регистрации: {str(e)}")
@@ -227,11 +295,14 @@ class MainWindow(QMainWindow):
 
         for note in sorted(notes):
             item = QListWidgetItem(note[:-4])
-            item.setFont(QFont("Consolas"))
             item.setData(Qt.ItemDataRole.UserRole, note)
             self.notes_list.addItem(item)
 
         self.stacked_widget.setCurrentIndex(1)
+
+    def update_preview(self):
+        markdown_text = self.note_edit.toPlainText()
+        self.preview.setMarkdown(markdown_text)
 
     def create_new_note(self):
         self.current_note_file = None
@@ -280,14 +351,12 @@ class MainWindow(QMainWindow):
         msg_box = QMessageBox()
         msg_box.setWindowTitle(title)
         msg_box.setText(message)
-        msg_box.setFont(QFont("Consolas"))
         msg_box.exec()
 
 
 app = QApplication(sys.argv)
-app.setStyle("Fusion")
 app.setFont(QFont("Consolas"))
-
+app.setStyle("Fusion")
 window = MainWindow()
 window.show()
 
