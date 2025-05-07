@@ -299,6 +299,7 @@ class MainWindow(QMainWindow):
         self.new_folder_btn = StyledButton("Новая папка")
         # noinspection PyUnresolvedReferences
         self.new_folder_btn.clicked.connect(self.create_new_folder)
+        self.new_folder_btn.setVisible(True)
 
         self.back_btn = StyledButton("Назад")
         # noinspection PyUnresolvedReferences
@@ -477,12 +478,14 @@ class MainWindow(QMainWindow):
             if self.current_folder_id is not None:
                 notes = self.current_user.list_folder(self.current_folder_id)
                 self.back_btn.setVisible(True)
+                self.new_folder_btn.setVisible(False)
             else:
                 if folders_and_notes and len(folders_and_notes) > 0:
                     folders = folders_and_notes[0]
                 if len(folders_and_notes) > 1:
                     notes = folders_and_notes[1]
                 self.back_btn.setVisible(False)
+                self.new_folder_btn.setVisible(True)
 
             if self.current_folder_id is None:
                 for folder_id, folder_name in folders:
