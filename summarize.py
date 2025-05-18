@@ -3,42 +3,52 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_gigachat.chat_models import GigaChat
 
 
+# Функции для ошибок
+def TooMany():
+    return "Слишком много запросов. Сервер устал. Попробуйте позже."
+
+
+def NotEthical():
+    return "Gigachat отказался отвечать по моральным соображениям."
+
+
 def summarize(text: str) -> str:
     """
-    Генерирует краткое содержание текста с опциональным эффектом печатания
-
-    Параметры:
-        text (str): Исходный текст для суммаризации
-
-    Возвращает:
-        str: Краткое содержание текста
+    Генерирует краткое содержание текста
     """
-    # Инициализация модели
     chat = GigaChat(
-        credentials="MDNiZWNiMmMtZWE5MS00MDY3LTlkYTAtNmQ5MjE0NmI3M2ViOjI2NDg4MmJkLWE1ZDQtNGYxZS04YmIzLTAxMzdkN2MxY2I0MA==",
+        credentials="MDNiZWNiMmMtZWE5MS00MDY3LTlkYTAtNmQ5MjE0NmI3M2ViOjg5YTMxZjk1LTY1ZjYtNGE2YS1iYzZkLWRkMTlhYzFhMWQ1Mw==",
         verify_ssl_certs=False,
-        # scope="GIGACHAT_API_PERS"
     )
 
-    # Системный промпт для суммаризации
     messages = [
         SystemMessage(content="""Ты профессиональный суммаризатор текстов. 
-                      Сгенерируй краткое содержание на русском языке, 
-                      сохраняя ключевые идеи и факты. 
-                      Объем: 3-5 предложений.""")
+                       Сгенерируй краткое содержание на русском языке.""")
     ]
 
-    # Добавляем текст для суммаризации
     messages.append(HumanMessage(content=text))
 
     try:
-        # Получаем ответ от модели
         response = chat.invoke(messages)
         summary = response.content
+
+        # Проверяем все возможные случаи отказа
+        if ("этич" in summary.lower() or
+                "отказываюсь" in summary.lower() or
+                "blacklist" in str(response) or
+                "Не люблю менять тему" in summary):
+            return NotEthical()
 
         return summary
 
     except Exception as e:
+        if "TooMany" in str(e) or "429" in str(e):
+            return TooMany()
+
         print(f"Ошибка при суммаризации: {e}")
         return ""
+
+
+
+
 
