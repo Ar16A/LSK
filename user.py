@@ -3,10 +3,14 @@ import os
 import itertools
 import hashlib
 import requests
+import re
 
 from errors import *
 
 __path_to_host__ = 'http://localhost:8000/'
+
+# Команда для запуска сервера:
+# uvicorn remoting:app --host 0.0.0.0 --port 8000
 
 
 # class Note:
@@ -26,7 +30,9 @@ def new_photo(id_note: int, path: str, size: int) -> str:
         cursor.execute("INSERT INTO photos (name, size, id_note) VALUES (?, ?, ?)",
                        (name, size, id_note))
         cursor.execute("SELECT seq FROM sqlite_sequence WHERE name = photos;")
-        return "images/" + str(id_note) + str(cursor.fetchone()[0]) + name.split('.')[-1]
+        if not os.path.exists(f"images/{id_note}"):
+            os.mkdir(f"images/{id_note}")
+        return f"images/{id_note}/{name}__{cursor.fetchone()[0]}"
 
 
 def list_notes(id_folder: int) -> list[tuple[int, str]]:
@@ -77,6 +83,8 @@ def save_note(id_note: int, text: str) -> None:
             raise NotChange
     with open(f"notes/{id_note}.txt", 'w', encoding="UTF-8") as note:
         note.write(text)
+
+    img_now = re.findall(r"!\[(.*?)\]\((.*?)\)", text)
 
 
 class Section:
@@ -147,21 +155,20 @@ class User:
         self.username = username
         self.email = email
 
-    def list_sections(self) -> tuple[Section, ...]:
-        with sqlite3.connect(f"databases/mainbase.db") as database:
-            cursor = database.cursor()
-            cursor.execute("SELECT * FROM sections WHERE id_user = ?;", (self.id_user,))
-            return tuple(Section(*args) for args in cursor.fetchall())
-
     def create_section(self, name: str, color: str):
         with sqlite3.connect(f"databases/mainbase.db") as database:
             cursor = database.cursor()
-            cursor.execute("SELECT name FROM sections WHERE id_user = ?;", (self.id_user,))
-            if name in itertools.chain(*cursor.fetchall()):
+            cursor.execute("SELECT EXISTS(SELECT name FROM sections WHERE name = ?);", (name,))
+            if cursor.fetchone()[0]:
                 raise OccupiedName("section", name)
             cursor.execute("INSERT INTO sections (name, color, id_user) VALUES (?, ?, ?);",
                            (name, color, self.id_user))
 
+def list_sections(self) -> tuple[Section, ...]:
+    with sqlite3.connect(f"databases/mainbase.db") as database:
+        cursor = database.cursor()
+        cursor.execute("SELECT * FROM sections;")
+        return tuple(Section(*args) for args in cursor.fetchall())
 
 def login_user(login: str, password: str) -> User:
     """Авторизация пользователя"""
