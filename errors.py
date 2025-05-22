@@ -64,6 +64,8 @@ class OccupiedName(ValueError):
                 return f"Заметка \"{self.name}\" уже существует. Выберите другое название для заметки"
             case "folder":
                 return f"Папка \"{self.name}\" уже существует. Выберите другое название для папки"
+            case "section":
+                return f"Раздел \"{self.name}\" уже существует. Выберите другое название для раздела"
 
 
 class UserNotExists(ValueError):
