@@ -6,10 +6,10 @@ from gigachat.models import Chat, Messages, MessagesRole
 import re
 import base64
 
-from langsmith import expect
-from pyexpat.errors import messages
-from sympy import content
-from sympy.stats import Expectation
+# from langsmith import expect
+# from pyexpat.errors import messages
+# from sympy import content
+# from sympy.stats import Expectation
 
 
 class TooMany(RuntimeError):
@@ -148,5 +148,3 @@ def get_help(query: str) -> str:
 
     response = giga.chat(payload)
     return response.choices[0].message.content
-
-print(get_help("Расскажи сказку на ночь, плиз-плиз"))
