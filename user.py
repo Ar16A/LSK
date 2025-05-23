@@ -168,7 +168,7 @@ class User:
         with sqlite3.connect(f"databases/mainbase.db") as database:
             cursor = database.cursor()
             cursor.execute("SELECT * FROM sections;")
-            return tuple(Section(*args) for args in cursor.fetchall())
+            return tuple(Section(*args, self.id_user) for args in cursor.fetchall())
 
 def login_user(login: str, password: str) -> User:
     """Авторизация пользователя"""
@@ -182,54 +182,61 @@ def login_user(login: str, password: str) -> User:
         case 1:
             raise IncorrectPassword
         case 0:
-            return User(*answer["user"])
+            pass
+    os.remove("databases/mainbase.db")
+
+    # with sqlite3.connect("databases/mainbase.db") as database:
+    #     cursor = database.cursor()
+    #
+    #     cursor.execute('''CREATE TABLE IF NOT EXISTS sections (
+    #             id_section INTEGER PRIMARY KEY AUTOINCREMENT,
+    #             name TEXT NOT NULL,
+    #             color TEXT NOT NULL,
+    #             id_root INTEGER UNIQUE);''')
+    #
+    #     cursor.execute('''CREATE TABLE IF NOT EXISTS folders (
+    #                             id_folder INTEGER PRIMARY KEY AUTOINCREMENT,
+    #                             name TEXT,
+    #                             id_section INTEGER NOT NULL);''')
+    #
+    #     # cursor.execute("SELECT id_user FROM users WHERE username = ? AND email = ?;", (username, email))
+    #     # id_user = cursor.fetchone()[0]
+    #
+    #     cursor.execute('''CREATE TRIGGER IF NOT EXISTS add_main_folder
+    #                     AFTER INSERT ON sections
+    #                     FOR EACH ROW
+    #                     BEGIN
+    #                         INSERT INTO folders (id_section) SELECT MAX(id_section) FROM sections;
+    #                         UPDATE sections SET id_root = (
+    #                         SELECT id_folder FROM folders WHERE id_section = (SELECT MAX(id_section) FROM sections) AND name IS NULL)
+    #                         WHERE id_section = (SELECT MAX(id_section) FROM sections);
+    #                     END;''')
+    #
+    #     cursor.execute('''CREATE TABLE IF NOT EXISTS notes (
+    #                                 id_note INTEGER PRIMARY KEY AUTOINCREMENT,
+    #                                 name TEXT NOT NULL,
+    #                                 cnt_photos INTEGER DEFAULT 0 NOT NULL,
+    #                                 id_folder INTEGER NOT NULL);''')
+    #
+    #     cursor.execute("CREATE INDEX IF NOT EXISTS idx_section_folders ON folders (id_section);")
+    #     cursor.execute("CREATE INDEX IF NOT EXISTS idx_folder_notes ON notes (id_folder);")
+    #
+    #     # cursor.execute('''CREATE TRIGGER IF NOT EXISTS autoincrement_notes
+    #     # AFTER INSERT ON notes
+    #     # FOR EACH ROW
+    #     # BEGIN
+    #     #     UPDATE notes SET id_note = (SELECT MAX(id_note) FROM notes) + 1
+    #     #     WHERE id_note = NULL;
+    #     # END;''')
+
+    return User(*answer["user"])
+
 
 
 def register_user(username: str, email: str, password: str) -> None:
     """Регистрация нового пользователя"""
     with sqlite3.connect("databases/mainbase.db") as database:
         cursor = database.cursor()
-
-        cursor.execute('''CREATE TABLE IF NOT EXISTS sections (
-        id_section INTEGER PRIMARY KEY AUTOINCREMENT,
-        name TEXT NOT NULL,
-        color TEXT NOT NULL,
-        id_root INTEGER UNIQUE);''')
-
-        cursor.execute('''CREATE TABLE IF NOT EXISTS folders (
-                        id_folder INTEGER PRIMARY KEY AUTOINCREMENT,
-                        name TEXT,
-                        id_section INTEGER NOT NULL);''')
-
-        # cursor.execute("SELECT id_user FROM users WHERE username = ? AND email = ?;", (username, email))
-        # id_user = cursor.fetchone()[0]
-
-        cursor.execute('''CREATE TRIGGER IF NOT EXISTS add_main_folder
-                AFTER INSERT ON sections
-                FOR EACH ROW
-                BEGIN
-                    INSERT INTO folders (id_section) SELECT MAX(id_section) FROM sections;
-                    UPDATE sections SET id_root = (
-                    SELECT id_folder FROM folders WHERE id_section = (SELECT MAX(id_section) FROM sections) AND name IS NULL)
-                    WHERE id_section = (SELECT MAX(id_section) FROM sections);
-                END;''')
-
-        cursor.execute('''CREATE TABLE IF NOT EXISTS notes (
-                            id_note INTEGER PRIMARY KEY AUTOINCREMENT,
-                            name TEXT NOT NULL,
-                            cnt_photos INTEGER DEFAULT 0 NOT NULL,
-                            id_folder INTEGER NOT NULL);''')
-
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_section_folders ON folders (id_section);")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_folder_notes ON notes (id_folder);")
-
-        # cursor.execute('''CREATE TRIGGER IF NOT EXISTS autoincrement_notes
-        # AFTER INSERT ON notes
-        # FOR EACH ROW
-        # BEGIN
-        #     UPDATE notes SET id_note = (SELECT MAX(id_note) FROM notes) + 1
-        #     WHERE id_note = NULL;
-        # END;''')
 
         data = {"username": username, "email": email, "password": hashlib.sha256(password.encode()).hexdigest()}
         response = requests.post(__path_to_host__ + "users/", json=data)
