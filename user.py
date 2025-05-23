@@ -1,8 +1,12 @@
 import sqlite3
-
-from errors import *
 import os
 import itertools
+import hashlib
+import requests
+
+from errors import *
+
+__path_to_host__ = 'http://localhost:8000/'
 
 
 # class Note:
@@ -10,6 +14,20 @@ import itertools
 #         self.id_note = id_note
 #         self.name = name
 #         self.text = text
+
+def new_photo(id_note: int, path: str, size: int) -> str:
+    name = path.split('/')[-1]
+    with sqlite3.connect(f"databases/mainbase.db") as database:
+        cursor = database.cursor()
+        cursor.execute("SELECT name FROM photos WHERE id_note = ?;", (id_note,))
+        # result = cursor.fetchall()
+        if name in itertools.chain(cursor.fetchall()):
+            raise OccupiedName("photo", name)
+        cursor.execute("INSERT INTO photos (name, size, id_note) VALUES (?, ?, ?)",
+                       (name, size, id_note))
+        cursor.execute("SELECT seq FROM sqlite_sequence WHERE name = photos;")
+        return "images/" + str(id_note) + str(cursor.fetchone()[0]) + name.split('.')[-1]
+
 
 def list_notes(id_folder: int) -> list[tuple[int, str]]:
     """Получение списка заметок из папки"""
@@ -19,6 +37,7 @@ def list_notes(id_folder: int) -> list[tuple[int, str]]:
         answer = cursor.fetchall()
         return [] if answer is None else answer
 
+
 def folder_is_empty(id_folder: int) -> bool:
     """Проверка папки на наличие в ней заметок"""
     with sqlite3.connect(f"databases/mainbase.db") as database:
@@ -26,10 +45,12 @@ def folder_is_empty(id_folder: int) -> bool:
         cursor.execute("SELECT EXISTS (SELECT id_note FROM notes WHERE id_folder = ?);", (id_folder,))
         return not cursor.fetchone()[0]
 
+
 def text_note(id_note: int) -> str:
     """Получение текста заметки по её id"""
     with open(f"notes/{id_note}.txt", 'r', encoding="UTF-8") as note:
         return note.read()
+
 
 def delete_note(id_note: int) -> None:
     """Удаление заметки по id"""
@@ -37,6 +58,7 @@ def delete_note(id_note: int) -> None:
     with sqlite3.connect(f"databases/mainbase.db") as database:
         cursor = database.cursor()
         cursor.execute("DELETE FROM notes WHERE id_note = ?;", (id_note,))
+
 
 def delete_folder(id_folder: int):
     """Удаление папки со всеми заметками внутри"""
@@ -46,6 +68,7 @@ def delete_folder(id_folder: int):
         for id_note in [x[0] for x in cursor.fetchall()]:
             delete_note(id_note)
         cursor.execute("DELETE FROM folders WHERE id_folder = ?;", (id_folder,))
+
 
 def save_note(id_note: int, text: str) -> None:
     """Сохранение заметки"""
@@ -114,15 +137,15 @@ class Section:
                 delete_folder(id_folder)
             cursor.execute("DELETE FROM sections WHERE id_section = ?;", (self.id_section,))
 
+
 class User:
     """Класс пользователей\n
     Содержит: id пользователя, имя, почту, пароль, id корневой папки\n"""
 
-    def __init__(self, id_user: int, username: str, email: str, password: str):
+    def __init__(self, id_user: int, username: str, email: str):
         self.id_user = id_user
         self.username = username
         self.email = email
-        self.password = password
 
     def list_sections(self) -> tuple[Section, ...]:
         with sqlite3.connect(f"databases/mainbase.db") as database:
@@ -142,45 +165,28 @@ class User:
 
 def login_user(login: str, password: str) -> User:
     """Авторизация пользователя"""
-    with sqlite3.connect("databases/mainbase.db") as database:
-        cursor = database.cursor()
-        cursor.execute(f"SELECT * FROM users WHERE {"email" if '@' in login else "username"} = ?;", (login,))
-        answer = cursor.fetchone()
-        if answer is None:
+    response = requests.get(__path_to_host__ + 'users/',
+                            json={"login": login, "password": hashlib.sha256(password.encode()).hexdigest()})
+    answer = response.json()
+    print(response.status_code, response.json())
+    match answer["status"]:
+        case 2:
             raise UserNotExists(login)
-        if password != answer[3]:
+        case 1:
             raise IncorrectPassword
-    return User(*answer)
+        case 0:
+            return User(*answer["user"])
 
 
 def register_user(username: str, email: str, password: str) -> None:
     """Регистрация нового пользователя"""
     with sqlite3.connect("databases/mainbase.db") as database:
         cursor = database.cursor()
-        cursor.execute('''CREATE TABLE IF NOT EXISTS users (
-        id_user INTEGER PRIMARY KEY AUTOINCREMENT,
-        username TEXT NOT NULL UNIQUE,
-        email TEXT NOT NULL UNIQUE,
-        password TEXT NOT NULL);''')
-
-        cursor.execute("SELECT username, email FROM users WHERE username = ? OR email = ?;", (username, email))
-        check = cursor.fetchone()
-        if check is not None:
-            match int(check[0] == username) + int(check[1] == email) * 2:
-                case 3:
-                    raise OccupiedName("all")
-                case 2:
-                    raise OccupiedName("email", email)
-                case 1:
-                    raise OccupiedName("username", username)
-                case 0:
-                    pass
 
         cursor.execute('''CREATE TABLE IF NOT EXISTS sections (
         id_section INTEGER PRIMARY KEY AUTOINCREMENT,
         name TEXT NOT NULL,
         color TEXT NOT NULL,
-        id_user INTEGER NOT NULL,
         id_root INTEGER UNIQUE);''')
 
         cursor.execute('''CREATE TABLE IF NOT EXISTS folders (
@@ -202,12 +208,11 @@ def register_user(username: str, email: str, password: str) -> None:
                 END;''')
 
         cursor.execute('''CREATE TABLE IF NOT EXISTS notes (
-                        id_note INTEGER PRIMARY KEY AUTOINCREMENT,
-                        name TEXT NOT NULL,
-                        id_folder INTEGER NOT NULL);''')
+                            id_note INTEGER PRIMARY KEY AUTOINCREMENT,
+                            name TEXT NOT NULL,
+                            cnt_photos INTEGER DEFAULT 0 NOT NULL,
+                            id_folder INTEGER NOT NULL);''')
 
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_user_users ON users (id_user);")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_user_sections ON sections (id_user);")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_section_folders ON folders (id_section);")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_folder_notes ON notes (id_folder);")
 
@@ -219,5 +224,15 @@ def register_user(username: str, email: str, password: str) -> None:
         #     WHERE id_note = NULL;
         # END;''')
 
-        cursor.execute('''INSERT INTO users (username, email, password) VALUES (?, ?, ?);''',
-                       (username, email, password))
+        data = {"username": username, "email": email, "password": hashlib.sha256(password.encode()).hexdigest()}
+        response = requests.post(__path_to_host__ + "users/", json=data)
+        print(response.status_code, response.json())
+        match response.json()["status"]:
+            case 3:
+                raise OccupiedName("all")
+            case 2:
+                raise OccupiedName("email", email)
+            case 1:
+                raise OccupiedName("username", username)
+            case 0:
+                pass
