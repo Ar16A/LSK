@@ -161,8 +161,8 @@ class User:
             cursor.execute("SELECT EXISTS(SELECT name FROM sections WHERE name = ?);", (name,))
             if cursor.fetchone()[0]:
                 raise OccupiedName("section", name)
-            cursor.execute("INSERT INTO sections (name, color, id_user) VALUES (?, ?, ?);",
-                           (name, color, self.id_user))
+            cursor.execute("INSERT INTO sections (name, color) VALUES (?, ?, ?);",
+                           (name, color))
 
 def list_sections(self) -> tuple[Section, ...]:
     with sqlite3.connect(f"databases/mainbase.db") as database:
