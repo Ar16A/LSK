@@ -83,7 +83,6 @@ def save_note(id_note: int, text: str) -> None:
             raise NotChange
     with open(f"notes/{id_note}.txt", 'w', encoding="UTF-8") as note:
         note.write(text)
-
     img_now = re.findall(r"!\[(.*?)\]\((.*?)\)", text)
 
 
@@ -94,7 +93,7 @@ class Section:
     :param id_user
     :param id_root"""
 
-    def __init__(self, id_section: int, name: str, color: str, id_user: int, id_root: int):
+    def __init__(self, id_section: int, name: str, color: str, id_root: int, id_user: int ):
         self.id_section = id_section
         self.name = name
         self.color = color
@@ -106,7 +105,7 @@ class Section:
         with sqlite3.connect(f"databases/mainbase.db") as database:
             cursor = database.cursor()
             cursor.execute("SELECT id_folder, name FROM folders WHERE id_section = ? AND name IS NOT NULL;",
-                           (self.id_user,))
+                           (self.id_section,))
             answer = [cursor.fetchall()]
             answer += [list_notes(self.id_root)]
             return [] if answer is None else answer
@@ -183,51 +182,50 @@ def login_user(login: str, password: str) -> User:
             raise IncorrectPassword
         case 0:
             pass
-    os.remove("databases/mainbase.db")
 
-    # with sqlite3.connect("databases/mainbase.db") as database:
-    #     cursor = database.cursor()
-    #
-    #     cursor.execute('''CREATE TABLE IF NOT EXISTS sections (
-    #             id_section INTEGER PRIMARY KEY AUTOINCREMENT,
-    #             name TEXT NOT NULL,
-    #             color TEXT NOT NULL,
-    #             id_root INTEGER UNIQUE);''')
-    #
-    #     cursor.execute('''CREATE TABLE IF NOT EXISTS folders (
-    #                             id_folder INTEGER PRIMARY KEY AUTOINCREMENT,
-    #                             name TEXT,
-    #                             id_section INTEGER NOT NULL);''')
-    #
-    #     # cursor.execute("SELECT id_user FROM users WHERE username = ? AND email = ?;", (username, email))
-    #     # id_user = cursor.fetchone()[0]
-    #
-    #     cursor.execute('''CREATE TRIGGER IF NOT EXISTS add_main_folder
-    #                     AFTER INSERT ON sections
-    #                     FOR EACH ROW
-    #                     BEGIN
-    #                         INSERT INTO folders (id_section) SELECT MAX(id_section) FROM sections;
-    #                         UPDATE sections SET id_root = (
-    #                         SELECT id_folder FROM folders WHERE id_section = (SELECT MAX(id_section) FROM sections) AND name IS NULL)
-    #                         WHERE id_section = (SELECT MAX(id_section) FROM sections);
-    #                     END;''')
-    #
-    #     cursor.execute('''CREATE TABLE IF NOT EXISTS notes (
-    #                                 id_note INTEGER PRIMARY KEY AUTOINCREMENT,
-    #                                 name TEXT NOT NULL,
-    #                                 cnt_photos INTEGER DEFAULT 0 NOT NULL,
-    #                                 id_folder INTEGER NOT NULL);''')
-    #
-    #     cursor.execute("CREATE INDEX IF NOT EXISTS idx_section_folders ON folders (id_section);")
-    #     cursor.execute("CREATE INDEX IF NOT EXISTS idx_folder_notes ON notes (id_folder);")
-    #
-    #     # cursor.execute('''CREATE TRIGGER IF NOT EXISTS autoincrement_notes
-    #     # AFTER INSERT ON notes
-    #     # FOR EACH ROW
-    #     # BEGIN
-    #     #     UPDATE notes SET id_note = (SELECT MAX(id_note) FROM notes) + 1
-    #     #     WHERE id_note = NULL;
-    #     # END;''')
+    with sqlite3.connect("databases/mainbase.db") as database:
+        cursor = database.cursor()
+
+        cursor.execute('''CREATE TABLE IF NOT EXISTS sections (
+                id_section INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                color TEXT NOT NULL,
+                id_root INTEGER UNIQUE);''')
+
+        cursor.execute('''CREATE TABLE IF NOT EXISTS folders (
+                                id_folder INTEGER PRIMARY KEY AUTOINCREMENT,
+                                name TEXT,
+                                id_section INTEGER NOT NULL);''')
+
+        # cursor.execute("SELECT id_user FROM users WHERE username = ? AND email = ?;", (username, email))
+        # id_user = cursor.fetchone()[0]
+
+        cursor.execute('''CREATE TRIGGER IF NOT EXISTS add_main_folder
+                        AFTER INSERT ON sections
+                        FOR EACH ROW
+                        BEGIN
+                            INSERT INTO folders (id_section) SELECT MAX(id_section) FROM sections;
+                            UPDATE sections SET id_root = (
+                            SELECT id_folder FROM folders WHERE id_section = (SELECT MAX(id_section) FROM sections) AND name IS NULL)
+                            WHERE id_section = (SELECT MAX(id_section) FROM sections);
+                        END;''')
+
+        cursor.execute('''CREATE TABLE IF NOT EXISTS notes (
+                                    id_note INTEGER PRIMARY KEY AUTOINCREMENT,
+                                    name TEXT NOT NULL,
+                                    cnt_photos INTEGER DEFAULT 0 NOT NULL,
+                                    id_folder INTEGER NOT NULL);''')
+
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_section_folders ON folders (id_section);")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_folder_notes ON notes (id_folder);")
+
+        # cursor.execute('''CREATE TRIGGER IF NOT EXISTS autoincrement_notes
+        # AFTER INSERT ON notes
+        # FOR EACH ROW
+        # BEGIN
+        #     UPDATE notes SET id_note = (SELECT MAX(id_note) FROM notes) + 1
+        #     WHERE id_note = NULL;
+        # END;''')
 
     return User(*answer["user"])
 
@@ -235,18 +233,15 @@ def login_user(login: str, password: str) -> User:
 
 def register_user(username: str, email: str, password: str) -> None:
     """Регистрация нового пользователя"""
-    with sqlite3.connect("databases/mainbase.db") as database:
-        cursor = database.cursor()
-
-        data = {"username": username, "email": email, "password": hashlib.sha256(password.encode()).hexdigest()}
-        response = requests.post(__path_to_host__ + "users/", json=data)
-        print(response.status_code, response.json())
-        match response.json()["status"]:
-            case 3:
-                raise OccupiedName("all")
-            case 2:
-                raise OccupiedName("email", email)
-            case 1:
-                raise OccupiedName("username", username)
-            case 0:
-                pass
+    data = {"username": username, "email": email, "password": hashlib.sha256(password.encode()).hexdigest()}
+    response = requests.post(__path_to_host__ + "users/", json=data)
+    print(response.status_code, response.json())
+    match response.json()["status"]:
+        case 3:
+            raise OccupiedName("all")
+        case 2:
+            raise OccupiedName("email", email)
+        case 1:
+            raise OccupiedName("username", username)
+        case 0:
+            pass
