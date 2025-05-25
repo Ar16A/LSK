@@ -158,12 +158,13 @@ def resize_photo(id_photo: int, size: int) -> None:
         cursor.execute("UPDATE notes SET latest = FALSE WHERE id_note = ?", (id_note,))
         cursor.execute("UPDATE folders SET latest = FALSE WHERE id_folder = ?", (id_folder,))
         cursor.execute("UPDATE sections SET latest = FALSE WHERE id_section = ?", (id_section,))
+        cursor.execute("UPDATE user SET latest = FALSE;")
 
-def photo_sizes(id_note: int) -> tuple[int, ...]:
+def get_photos(id_note: int) -> list[tuple[int, int]]:
     with sqlite3.connect("mainbase.db") as database:
         cursor = database.cursor()
-        cursor.execute("SELECT size FROM photos WHERE id_note = ?", (id_note,))
-        return tuple(x[0] for x in cursor.fetchall())
+        cursor.execute("SELECT id_photo, size FROM photos WHERE id_note = ?", (id_note,))
+        return cursor.fetchall()
 
 def list_notes(id_folder: int) -> list[tuple[int, str]]:
     """Получение списка заметок из папки"""
