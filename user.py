@@ -1,5 +1,5 @@
 import sqlite3
-import os
+import os, shutil
 import itertools
 import hashlib
 import requests
@@ -23,15 +23,15 @@ __path_to_host__ = 'http://localhost:8000/'
 #         self.text = text
 
 def synchro() -> bool:
-    with sqlite3.connect(f"mainbase.db") as database:
-        try:
-            response = requests.get(__path_to_host__ + "check/")
-            print(response.status_code, response.json())
-        except requests.RequestException as e:
-            # raise NotConnect(f"Ошибка сети: {e}")
-            print(NotConnect(f"Ошибка сети: {e}"))
-            return False
+    try:
+        response = requests.get(__path_to_host__ + "check/")
+        print(response.status_code, response.json())
+    except requests.RequestException as e:
+        # raise NotConnect(f"Ошибка сети: {e}")
+        print(NotConnect(f"Ошибка сети: {e}"))
+        return False
 
+    with sqlite3.connect(f"mainbase.db") as database:
         cursor = database.cursor()
         cursor.execute("SELECT id_user, latest FROM user;")
         id_user, f_user = cursor.fetchone()
@@ -53,7 +53,7 @@ def synchro() -> bool:
         notes = []
         for row in folders:
             cursor.execute(
-                "SELECT id_note, name, cnt_photos, id_folder FROM notes WHERE id_folder = ? AND latest = FALSE",
+                "SELECT id_note, name, cnt_photos, id_folder FROM notes WHERE id_folder = ? AND latest = FALSE;",
                 (row[0],))
             cur_folder = cursor.fetchall()
             for i in range(len(cur_folder)):
@@ -71,7 +71,7 @@ def synchro() -> bool:
             for i in range(len(cur_note)):
                 file_photos.append(("file_photos",
                                     (f"/{cur_note[i][-1]}/{cur_note[i][1]}",
-                                     open(f"imgs/{cur_note[i][-1]}/{cur_folder[i][1]}", "rb"),
+                                     open(f"imgs/{cur_note[i][-1]}/{cur_note[i][1]}", "rb"),
                                      "application/octet-stream")))
                 notes.append(cur_note[i])
 
@@ -86,7 +86,7 @@ def synchro() -> bool:
                    "notes": notes, "photos": photos, "deleted": deleted, "seqs": seqs}
         try:
             response = requests.post(__path_to_host__ + "all/",
-                                     data= {"json_str": json.dumps(payload)},
+                                     data={"json_str": json.dumps(payload)},
                                      files=file_photos + file_notes)
             print(response.status_code, response.json())
         except requests.RequestException as e:
@@ -117,7 +117,9 @@ def new_photo(id_note: int, path: str, size: int) -> str:
         # cursor.execute("SELECT seq FROM sqlite_sequence WHERE name = photos;")
         if not os.path.exists(f"imgs/{id_note}"):
             os.mkdir(f"imgs/{id_note}")
+        shutil.copyfile(path, f"imgs/{id_note}/{name}")
         return f"imgs/{id_note}/{name}"
+
 
 def giga_photo(id_note: int, name_photo: str, query: str) -> str:
     with sqlite3.connect("mainbase.db") as database:
@@ -137,6 +139,20 @@ def giga_photo(id_note: int, name_photo: str, query: str) -> str:
             os.mkdir(f"imgs/{id_note}")
         return f"imgs/{id_note}/{name_photo}.png"
 
+
+def resize_photo(id_photo: int, size: int) -> None:
+    with sqlite3.connect("mainbase.db") as database:
+        cursor = database.cursor()
+        cursor.execute("UPDATE photos SET size = ? WHERE id_photo = ?;", (size, id_photo))
+        cursor.execute("SELECT id_note FROM photos WHERE id_photo = ?;", (id_photo,))
+        id_note = cursor.fetchone()[0]
+        cursor.execute("SELECT id_folder FROM notes WHERE id_note = ?;", (id_note,))
+        id_folder = cursor.fetchone()[0]
+        cursor.execute("SELECT id_section FROM folders WHERE id_folder = ?;", (id_folder,))
+        id_section = cursor.fetchone()[0]
+        cursor.execute("UPDATE notes SET latest = FALSE WHERE id_note = ?", (id_note,))
+        cursor.execute("UPDATE folders SET latest = FALSE WHERE id_folder = ?", (id_folder,))
+        cursor.execute("UPDATE sections SET latest = FALSE WHERE id_section = ?", (id_section,))
 
 def list_notes(id_folder: int) -> list[tuple[int, str]]:
     """Получение списка заметок из папки"""
@@ -167,7 +183,14 @@ def delete_note(id_note: int) -> None:
     with sqlite3.connect(f"mainbase.db") as database:
         cursor = database.cursor()
         cursor.execute("DELETE FROM notes WHERE id_note = ?;", (id_note,))
-
+        cursor.execute("INSERT INTO deleted (name, id) VALUES (\"notes\", ?);", (id_note, ))
+        cursor.execute("SELECT id_photo, name FROM photos WHERE id_note = ?;", (id_note,))
+        photos = cursor.fetchall()
+        for img in photos:
+            os.remove(f"images/{id_note}/{img[1]}")
+            cursor.execute("DELETE FROM photos WHERE id_photo = ?;", (img[0],))
+            cursor.execute("INSERT INTO deleted (name, id) VALUES (\"photos\", ?);", (img[0],))
+        cursor.execute("UPDATE user SET latest = FALSE;")
 
 def delete_folder(id_folder: int):
     """Удаление папки со всеми заметками внутри"""
@@ -177,18 +200,20 @@ def delete_folder(id_folder: int):
         for id_note in [x[0] for x in cursor.fetchall()]:
             delete_note(id_note)
         cursor.execute("DELETE FROM folders WHERE id_folder = ?;", (id_folder,))
+        cursor.execute("INSERT INTO deleted (name, id) VALUES (\"folders\", ?);", (id_folder,))
+        cursor.execute("UPDATE user SET latest = FALSE;")
 
 
-def save_note(id_note: int, text: str, name: str = "") -> bool:
+def save_note(id_note: int, text: str, name: str = "") -> None:
     """Сохранение заметки"""
     id_folder = None
-    id_user = __get_id_user__()
+    # id_user = __get_id_user__()
     with sqlite3.connect("mainbase.db") as database:
         cursor = database.cursor()
         cursor.execute("SELECT id_folder FROM notes WHERE id_note = ?;", (id_note,))
         id_folder = cursor.fetchone()[0]
         if name != "":
-            cursor.execute("SELECT EXISTS(SELECT NULL FROM notes WHERE id_folder = ? AND name = ?;",
+            cursor.execute("SELECT EXISTS(SELECT NULL FROM notes WHERE id_folder = ? AND name = ?);",
                            (id_folder, name))
             if cursor.fetchone()[0]:
                 raise OccupiedName("note", name)
@@ -196,14 +221,16 @@ def save_note(id_note: int, text: str, name: str = "") -> bool:
             # if not os.path.exists(f"imgs/{id_note}"):
             #     os.mkdir(f"imgs/{id_note}")
 
-    conn = synchro()
-    if os.path.exists(f"notes/{id_note}.txt"):
+    # conn = synchro()
+    # if os.path.exists(f"notes/{id_note}.txt"):
+    if name == '':
         with open(f"notes/{id_note}.txt", 'r', encoding="UTF-8") as note:
             if text == note.read():
                 raise NotChange
     with open(f"notes/{id_note}.txt", 'w', encoding="UTF-8") as note:
         note.write(text)
 
+    # photos = []
     imgs_now = [x[-1] for x in re.findall(r"!\[(.*?)\]\(imgs/(.*?)/(.*?)\)", text)]
     with sqlite3.connect("mainbase.db") as database:
         cursor = database.cursor()
@@ -213,43 +240,46 @@ def save_note(id_note: int, text: str, name: str = "") -> bool:
             for photo in imgs_db:
                 if photo[1] not in imgs_now:
                     os.remove(f"imgs/{id_note}/{photo[1]}")
-                    cursor.execute("DELETE FROM photos WHERE id_photo = ?",(photo[0]))
-                    cursor.execute("INSERT INTO deleted (name, id) VALUES (photos, ?)", (photo[0],))
+                    cursor.execute("DELETE FROM photos WHERE id_photo = ?", (photo[0],))
+                    cursor.execute("INSERT INTO deleted (name, id) VALUES (\"photos\", ?)", (photo[0],))
+                # else:
+                #     cursor.execute("SELECT id_photo, name, size FROM photos WHERE id_note = ?", (id_note,))
+                    # photos.append(cursor.fetchone())
 
-    # if not conn: return False
-    payload = {"id_local": id_note, "name": name, "id_user": id_user, "id_local_folder": id_folder}
-    note = ("note", (str(id_note), open(f"notes/{id_note}.txt", "rb"), "application/octet-stream"))
-
-    photos = []
-    for img in imgs_now:
-        photos.append(("photos", (img, open(img, "rb"), "application/octet-stream")))
-
-    try:
-        response = requests.post(__path_to_host__ + "notes/",
-                                 data={"json_str": json.dumps(payload)},
-                                 files=photos + [note])
-        print(response.status_code, response.json())
-    except requests.RequestException as e:
-        # raise NotConnect(f"Ошибка сети: {e}")
-        print(NotConnect(f"Ошибка сети: {e}"))
-        return False
-
-    try:
-        id_user = __get_id_user__()
-        response = requests.post(__path_to_host__ + "notes/",
-                                 json={"id_local": id_note, "name": name, "id_user": id_user,
-                                       "id_local_folder": id_folder})
-        print(response.status_code, response.json())
-    except (requests.RequestException, NotConnect) as e:
+        cursor.execute("UPDATE notes SET latest = FALSE WHERE id_note = ?", (id_note,))
+        cursor.execute("SELECT id_section FROM folders WHERE id_folder = ?", (id_folder,))
+        id_section = cursor.fetchone()[0]
         cursor.execute("UPDATE sections SET latest = FALSE WHERE id_section = ?;",
-                       (self.id_section,))
+                       (id_section,))
         cursor.execute("UPDATE folders SET latest = FALSE WHERE id_folder = ?;", (id_folder,))
         cursor.execute("UPDATE user SET latest = FALSE;")
-        # raise NotConnect(f"Ошибка сети: {e}")
-        print(NotConnect(f"Ошибка сети: {e}"))
-        return False
-    return True
 
+    # if not conn: return False
+    # payload = {"id_local": id_note, "name": name, "id_user": id_user, "id_local_folder": id_folder, "photos": photos}
+    # note = ("note", (str(id_note), open(f"notes/{id_note}.txt", "rb"), "application/octet-stream"))
+    #
+    # file_photos = []
+    # for img in imgs_now:
+    #     file_photos.append(
+    #         ("photos", (f"{id_note}/{img}", open(f"imgs/{id_note}/{img}", "rb"), "application/octet-stream")))
+
+    # try:
+    #     response = requests.post(__path_to_host__ + "notes/",
+    #                              data={"json_str": json.dumps(payload)},
+    #                              files=file_photos + [note])
+    #     print(response.status_code, response.json())
+    # except requests.RequestException as e:
+    #     cursor.execute("UPDATE notes SET latest = FALSE WHERE id_note = ?", (id_note,))
+    #     cursor.execute("SELECT id_section FROM folders WHERE id_folder = ?", (id_folder,))
+    #     id_section = cursor.fetchone()[0]
+    #     cursor.execute("UPDATE sections SET latest = FALSE WHERE id_section = ?;",
+    #                    (id_section,))
+    #     cursor.execute("UPDATE folders SET latest = FALSE WHERE id_folder = ?;", (id_folder,))
+    #     cursor.execute("UPDATE user SET latest = FALSE;")
+    #     # raise NotConnect(f"Ошибка сети: {e}")
+    #     print(NotConnect(f"Ошибка сети: {e}"))
+    #     return False
+    # return True
 
 
 class Section:
@@ -279,9 +309,9 @@ class Section:
             answer += [list_notes(self.id_root)]
             return [] if answer is None else answer
 
-    def create_folder(self, name: str) -> bool:
+    def create_folder(self, name: str) -> None:
         """Создание папки"""
-        conn = synchro()
+        # conn = synchro()
         # try:
         #     synchro()
         # except (requests.RequestException, NotConnect) as e:
@@ -298,21 +328,25 @@ class Section:
                            (name, self.id_section))
             id_folder = cursor.lastrowid
 
-            if not conn: return False
-            try:
-                response = requests.post(__path_to_host__ + "folders/",
-                                         json={"id_local": id_folder, "name": name, "id_user": self.id_user,
-                                               "id_local_section": self.id_section})
-                print(response.status_code, response.json())
-            except (requests.RequestException, NotConnect) as e:
-                cursor.execute("UPDATE sections SET latest = FALSE WHERE id_section = ?;",
-                               (self.id_section,))
-                cursor.execute("UPDATE folders SET latest = FALSE WHERE id_folder = ?;", (id_folder,))
-                cursor.execute("UPDATE user SET latest = FALSE;")
-                # raise NotConnect(f"Ошибка сети: {e}")
-                print(NotConnect(f"Ошибка сети: {e}"))
-                return False
-            return True
+            cursor.execute("UPDATE sections SET latest = FALSE WHERE id_section = ?;",
+                           (self.id_section,))
+            cursor.execute("UPDATE folders SET latest = FALSE WHERE id_folder = ?;", (id_folder,))
+            cursor.execute("UPDATE user SET latest = FALSE;")
+            # if not conn: return False
+            # try:
+            #     response = requests.post(__path_to_host__ + "folders/",
+            #                              json={"id_local": id_folder, "name": name, "id_user": self.id_user,
+            #                                    "id_local_section": self.id_section})
+            #     print(response.status_code, response.json())
+            # except (requests.RequestException, NotConnect) as e:
+            #     cursor.execute("UPDATE sections SET latest = FALSE WHERE id_section = ?;",
+            #                    (self.id_section,))
+            #     cursor.execute("UPDATE folders SET latest = FALSE WHERE id_folder = ?;", (id_folder,))
+            #     cursor.execute("UPDATE user SET latest = FALSE;")
+            #     # raise NotConnect(f"Ошибка сети: {e}")
+            #     print(NotConnect(f"Ошибка сети: {e}"))
+            #     return False
+            # return True
 
     def reserve_note(self, id_folder: int = 0) -> int:
         """Создание заметки"""
@@ -334,6 +368,8 @@ class Section:
             for id_folder in [x[0] for x in cursor.fetchall()]:
                 delete_folder(id_folder)
             cursor.execute("DELETE FROM sections WHERE id_section = ?;", (self.id_section,))
+            cursor.execute("INSERT INTO deleted (name, id) VALUES (\"sections\", ?);", (self.id_section,))
+            cursor.execute("UPDATE user SET latest = FALSE;")
 
 
 class User:
@@ -346,8 +382,8 @@ class User:
         self.email = email
         self.latest = latest
 
-    def create_section(self, name: str, color: str) -> bool:
-        conn = synchro()
+    def create_section(self, name: str, color: str) -> None:
+        # conn = synchro()
         # try:
         #     synchro()
         # except (requests.RequestException, NotConnect) as e:
@@ -368,20 +404,24 @@ class User:
             id_root = cursor.lastrowid
             cursor.execute("UPDATE sections SET id_root = ? WHERE id_section = ?;",
                            (id_root, id_section))
-            if not conn: return False
-            try:
-                response = requests.post(__path_to_host__ + "sections/",
-                                         json={"id_local": id_section, "name": name, "color": color,
-                                               "id_user": self.id_user, "id_root": id_root})
-                print(response.status_code, response.json())
-            except (requests.RequestException, ConnectionError)  as e:
-                cursor.execute("UPDATE sections SET latest = FALSE WHERE id_section = ?;", (id_section,))
-                cursor.execute("UPDATE folders SET latest = FALSE WHERE id_folder = ?;", (id_root,))
-                cursor.execute("UPDATE user SET latest = FALSE;")
-                # raise NotConnect(f"Ошибка сети: {e}")
-                print(NotConnect(f"Ошибка сети: {e}"))
-                return False
-            return True
+
+            cursor.execute("UPDATE sections SET latest = FALSE WHERE id_section = ?;", (id_section,))
+            cursor.execute("UPDATE folders SET latest = FALSE WHERE id_folder = ?;", (id_root,))
+            cursor.execute("UPDATE user SET latest = FALSE;")
+            # if not conn: return False
+            # try:
+            #     response = requests.post(__path_to_host__ + "sections/",
+            #                              json={"id_local": id_section, "name": name, "color": color,
+            #                                    "id_user": self.id_user, "id_root": id_root})
+            #     print(response.status_code, response.json())
+            # except (requests.RequestException, ConnectionError) as e:
+            #     cursor.execute("UPDATE sections SET latest = FALSE WHERE id_section = ?;", (id_section,))
+            #     cursor.execute("UPDATE folders SET latest = FALSE WHERE id_folder = ?;", (id_root,))
+            #     cursor.execute("UPDATE user SET latest = FALSE;")
+            #     # raise NotConnect(f"Ошибка сети: {e}")
+            #     print(NotConnect(f"Ошибка сети: {e}"))
+            #     return False
+            # return True
 
     def list_sections(self) -> tuple[Section, ...]:
         with sqlite3.connect(f"mainbase.db") as database:
@@ -420,6 +460,8 @@ def login_user(login: str, password: str) -> User:
         os.remove("mainbase.db")
     if not os.path.exists("imgs"):
         os.mkdir("imgs")
+    if not os.path.exists("notes"):
+        os.mkdir("notes")
 
     with sqlite3.connect("mainbase.db") as database:
         cursor = database.cursor()
@@ -547,11 +589,25 @@ def register_user(username: str, email: str, password: str) -> None:
         case 0:
             pass
 
+
 def __get_id_user__() -> int:
     with sqlite3.connect("mainbase.db") as database:
         cursor = database.cursor()
         cursor.execute("SELECT id_user FROM user;")
         return cursor.fetchone()[0]
+
+def is_sync() -> bool:
+    with sqlite3.connect("mainbase.db") as database:
+        cursor = database.cursor()
+        cursor.execute("SELECT latest FROM user;")
+        return bool(cursor.fetchone()[0])
+
+def logout_user():
+    shutil.rmtree("imgs")
+    shutil.rmtree("notes")
+    for file in ["mainbase.db", "last_drawing.png"]:
+        if os.path.exists(file):
+            os.remove(file)
 
 def cur_login() -> None | User:
     if not os.path.exists("mainbase.db"): return
