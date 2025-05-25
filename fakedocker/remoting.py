@@ -1,3 +1,5 @@
+import os
+
 from fastapi import FastAPI, UploadFile, File, Form, Body
 from fastapi.responses import StreamingResponse
 import sqlite3
@@ -63,17 +65,57 @@ def synchro_client(json_str: str = Form(...),
                 cursor.execute('''UPDATE photos SET size = ? WHERE id_local = ? AND id_user = ?''',
                                (photo[2], photo[0], id_user))
         for file in photos:
-            with open(f"{id_user}/imgs/{file.filename}.txt", "wb") as f:
+            with open(f"{id_user}/imgs/{file.filename}", "wb") as f:
                 f.write(file.file.read())
+
+        for obj in data["deleted"]:
+            match obj[0]:
+                case "photos":
+                    cursor.execute("SELECT name, id_local_note FROM photos WHERE id_user = ? AND id_local = ?;",
+                                   (id_user, obj[1]))
+                    photo = cursor.fetchone()
+                    os.remove(f"{id_user}/imgs/{photo[1]}/{photo[0]}")
+                    cursor.execute("DELETE FROM photos WHERE id_user = ? AND id_local = ?;",
+                                   (id_user, obj[1]))
+                case "notes":
+                    os.remove(f"{id_user}/notes/{obj[1]}.txt")
+                    cursor.execute("DELETE FROM notes WHERE id_user = ? AND id_local = ?;",
+                                   (id_user, obj[1]))
+                case _:
+                    cursor.execute(f"DELETE FROM {obj[0]} WHERE id_user = ? AND id_local = ?",
+                                   (id_user, obj[1]))
     print(f"Пользователь {id_user} успешно синхронизировался")
     return {"status": 0}
 
 
-# @app.post("/notes/")
-# def new_note(json_str: str = Form(...),
-#              note: UploadFile = File(...),
-#              photos: list[UploadFile] = File([])):
-
+@app.post("/notes/")
+def new_note(json_str: str = Form(...),
+             note: UploadFile = File(...),
+             photos: list[UploadFile] = File([])):
+    data = json.loads(json_str)
+    id_user = data["id_user"]
+    with sqlite3.connect("rembase.db") as database:
+        cursor = database.cursor()
+        cursor.execute("INSERT INTO notes (id_local, name, id_local_section, id_user) VALUES (?, ?, ?, ?);",
+                       (data["id_local"], data["name"], data["id_local_folder"], id_user))
+        cursor.execute(
+            "UPDATE users SET seq_note = seq_note + 1 WHERE id_user = ?",
+            (id_user,))
+        for img in data["photos"]:
+            cursor.execute("SELECT EXISTS(SELECT NULL FROM photos WHERE id_user = ? AND id_local = ?);",
+                           (id_user, img[0]))
+            if cursor.fetchone()[0]:
+                cursor.execute("UPDATE photos SET size = ? WHERE id_user = ? AND id_local = ?;",
+                               (img[2], img[0], id_user))
+            else:
+                cursor.execute('''INSERT INTO photos (id_local, name, size, id_local_note, id_user) VALUES (?, ?, ?, ?, ?)''',
+                               (*img, data["id_local"], id_user))
+        for file in photos:
+            with open(f"{id_user}/imgs/{file.filename}", "wb") as f:
+                f.write(file.file.read())
+        with open(f"{id_user}/notes/{data["id_note"]}.txt", "wb") as f:
+            f.write(note.file.read())
+        print("Тут нечего принтить")
 
 
 @app.post("/folders/")
