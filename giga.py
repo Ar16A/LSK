@@ -89,7 +89,6 @@ def summary(text: str) -> str:
 def gen_photo(query: str, path: str = "") -> str:
     if path == "":
         path = "last_giga_image.png"
-
     giga = GigaChat(
         credentials="MDNiZWNiMmMtZWE5MS00MDY3LTlkYTAtNmQ5MjE0NmI3M2ViOjg5YTMxZjk1LTY1ZjYtNGE2YS1iYzZkLWRkMTlhYzFhMWQ1Mw==",
         verify_ssl_certs=False)

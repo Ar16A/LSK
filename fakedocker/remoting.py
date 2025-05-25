@@ -81,8 +81,8 @@ def synchro_client(json_str: str = Form(...),
                     cursor.execute("SELECT name, id_local_note FROM photos WHERE id_user = ? AND id_local = ?;",
                                    (id_user, obj[1]))
                     photo = cursor.fetchone()
-                    shutil.rmtree(f"{id_user}/imgs/{photo[1]}")
                     if photo is not None:
+                        shutil.rmtree(f"{id_user}/imgs/{photo[1]}")
                         # safe_remove(f"{id_user}/imgs/{photo[1]}/{photo[0]}")
                         cursor.execute("DELETE FROM photos WHERE id_user = ? AND id_local = ?;",
                                        (id_user, obj[1]))
@@ -97,60 +97,60 @@ def synchro_client(json_str: str = Form(...),
     return {"status": 0}
 
 
-@app.post("/notes/")
-def new_note(json_str: str = Form(...),
-             note: UploadFile = File(...),
-             photos: list[UploadFile] = File([])):
-    data = json.loads(json_str)
-    id_user = data["id_user"]
-    with sqlite3.connect("rembase.db") as database:
-        cursor = database.cursor()
-        cursor.execute("INSERT INTO notes (id_local, name, id_local_section, id_user) VALUES (?, ?, ?, ?);",
-                       (data["id_local"], data["name"], data["id_local_folder"], id_user))
-        cursor.execute(
-            "UPDATE users SET seq_note = seq_note + 1 WHERE id_user = ?",
-            (id_user,))
-        for img in data["photos"]:
-            cursor.execute("SELECT EXISTS(SELECT NULL FROM photos WHERE id_user = ? AND id_local = ?);",
-                           (id_user, img[0]))
-            if cursor.fetchone()[0]:
-                cursor.execute("UPDATE photos SET size = ? WHERE id_user = ? AND id_local = ?;",
-                               (img[2], img[0], id_user))
-            else:
-                cursor.execute('''INSERT INTO photos (id_local, name, size, id_local_note, id_user) VALUES (?, ?, ?, ?, ?)''',
-                               (*img, data["id_local"], id_user))
-        for file in photos:
-            with open(f"{id_user}/imgs/{file.filename}", "wb") as f:
-                f.write(file.file.read())
-        with open(f"{id_user}/notes/{data["id_note"]}.txt", "wb") as f:
-            f.write(note.file.read())
-        print("Тут нечего принтить")
-
-
-@app.post("/folders/")
-def new_folder(data: dict = Body(...)):
-    with sqlite3.connect("rembase.db") as database:
-        cursor = database.cursor()
-        cursor.execute("INSERT INTO folders (id_local, name, id_local_section, id_user) VALUES (?, ?, ?, ?);",
-                       (data["id_local"], data["name"], data["id_local_section"], data["id_user"]))
-        cursor.execute(
-            "UPDATE users SET seq_folders = seq_folders + 1 WHERE id_user = ?",
-            (data["id_user"],))
-        print("Тут нечего принтить")
-
-
-@app.post("/sections/")
-def new_section(data: dict = Body(...)):
-    with sqlite3.connect("rembase.db") as database:
-        cursor = database.cursor()
-        cursor.execute("INSERT INTO sections (id_local, name, color, id_user, id_local_root) VALUES (?, ?, ?, ?, ?);",
-                       (data["id_local"], data["name"], data["color"], data["id_user"], data["id_root"]))
-        cursor.execute("INSERT INTO folders (id_local, id_local_section, id_user) VALUES (?, ?, ?);",
-                       (data["id_root"], data["id_local"], data["id_user"]))
-        cursor.execute(
-            "UPDATE users SET seq_sections = seq_sections + 1, seq_folders = seq_folders + 1 WHERE id_user = ?",
-            (data["id_user"],))
-        print("Тут нечего принтить")
+# @app.post("/notes/")
+# def new_note(json_str: str = Form(...),
+#              note: UploadFile = File(...),
+#              photos: list[UploadFile] = File([])):
+#     data = json.loads(json_str)
+#     id_user = data["id_user"]
+#     with sqlite3.connect("rembase.db") as database:
+#         cursor = database.cursor()
+#         cursor.execute("INSERT INTO notes (id_local, name, id_local_section, id_user) VALUES (?, ?, ?, ?);",
+#                        (data["id_local"], data["name"], data["id_local_folder"], id_user))
+#         cursor.execute(
+#             "UPDATE users SET seq_note = seq_note + 1 WHERE id_user = ?",
+#             (id_user,))
+#         for img in data["photos"]:
+#             cursor.execute("SELECT EXISTS(SELECT NULL FROM photos WHERE id_user = ? AND id_local = ?);",
+#                            (id_user, img[0]))
+#             if cursor.fetchone()[0]:
+#                 cursor.execute("UPDATE photos SET size = ? WHERE id_user = ? AND id_local = ?;",
+#                                (img[2], img[0], id_user))
+#             else:
+#                 cursor.execute('''INSERT INTO photos (id_local, name, size, id_local_note, id_user) VALUES (?, ?, ?, ?, ?)''',
+#                                (*img, data["id_local"], id_user))
+#         for file in photos:
+#             with open(f"{id_user}/imgs/{file.filename}", "wb") as f:
+#                 f.write(file.file.read())
+#         with open(f"{id_user}/notes/{data["id_note"]}.txt", "wb") as f:
+#             f.write(note.file.read())
+#         print("Тут нечего принтить")
+#
+#
+# @app.post("/folders/")
+# def new_folder(data: dict = Body(...)):
+#     with sqlite3.connect("rembase.db") as database:
+#         cursor = database.cursor()
+#         cursor.execute("INSERT INTO folders (id_local, name, id_local_section, id_user) VALUES (?, ?, ?, ?);",
+#                        (data["id_local"], data["name"], data["id_local_section"], data["id_user"]))
+#         cursor.execute(
+#             "UPDATE users SET seq_folders = seq_folders + 1 WHERE id_user = ?",
+#             (data["id_user"],))
+#         print("Тут нечего принтить")
+#
+#
+# @app.post("/sections/")
+# def new_section(data: dict = Body(...)):
+#     with sqlite3.connect("rembase.db") as database:
+#         cursor = database.cursor()
+#         cursor.execute("INSERT INTO sections (id_local, name, color, id_user, id_local_root) VALUES (?, ?, ?, ?, ?);",
+#                        (data["id_local"], data["name"], data["color"], data["id_user"], data["id_root"]))
+#         cursor.execute("INSERT INTO folders (id_local, id_local_section, id_user) VALUES (?, ?, ?);",
+#                        (data["id_root"], data["id_local"], data["id_user"]))
+#         cursor.execute(
+#             "UPDATE users SET seq_sections = seq_sections + 1, seq_folders = seq_folders + 1 WHERE id_user = ?",
+#             (data["id_user"],))
+#         print("Тут нечего принтить")
 
 
 @app.get("/users/")
@@ -162,6 +162,8 @@ def get_user(data: dict = Body(...)):
         cursor.execute(f"SELECT * FROM users WHERE {"email" if '@' in login else "username"} = ?;",
                        (login,))
         answer = cursor.fetchone()
+        notes = []
+        photos = []
         if answer is None:
             result = {"status": 2}
         elif password != answer[3]:
@@ -227,37 +229,3 @@ def new_user(data: dict = Body(...)):
     os.makedirs(f"{id_user}/imgs", exist_ok=True)
     print({"status": 0})
     return {"status": 0}
-
-# with sqlite3.connect("databases/rembase.db") as database:
-#     database.row_factory = sqlite3.Row
-#     items = database.execute("SELECT * FROM users").fetchall()
-#     # print([[items[i][j] for i in range(len(items))] for j in range(len(items[0]))])
-#     print([dict(item) for item in items])
-
-# from fastapi import FastAPI
-# import sqlite3
-#
-# app = FastAPI()
-#
-#
-# def get_db_connection():
-#     conn = sqlite3.connect('database.db')
-#     conn.row_factory = sqlite3.Row
-#     return conn
-#
-#
-# @app.get("/items/")
-# def read_items():
-#     conn = get_db_connection()
-#     items = conn.execute('SELECT * FROM items').fetchall()
-#     conn.close()
-#     return [dict(item) for item in items]
-#
-#
-# @app.post("/items/")
-# def create_item(name: str, description: str):
-#     conn = get_db_connection()
-#     conn.execute('INSERT INTO items (name, description) VALUES (?, ?)', (name, description))
-#     conn.commit()
-#     conn.close()
-#     return {"message": "Item created successfully"}
