@@ -23,19 +23,19 @@ __path_to_host__ = 'http://localhost:8000/'
 #         self.text = text
 
 def synchro() -> bool:
-    try:
-        response = requests.get(__path_to_host__ + "check/")
-        print(response.status_code, response.json())
-    except requests.RequestException as e:
-        # raise NotConnect(f"Ошибка сети: {e}")
-        print(NotConnect(f"Ошибка сети: {e}"))
-        return False
-
     with sqlite3.connect(f"mainbase.db") as database:
         cursor = database.cursor()
         cursor.execute("SELECT id_user, latest FROM user;")
         id_user, f_user = cursor.fetchone()
         if f_user: return True
+
+        try:
+            response = requests.get(__path_to_host__ + "check/")
+            print(response.status_code, response.json())
+        except requests.RequestException as e:
+            # raise NotConnect(f"Ошибка сети: {e}")
+            print(NotConnect(f"Ошибка сети: {e}"))
+            return False
 
         cursor.execute("SELECT id_section, name, color, id_root FROM sections WHERE latest = FALSE;")
         sections = cursor.fetchall()
@@ -94,7 +94,7 @@ def synchro() -> bool:
                                      files=file_photos + file_notes)
             print(response.status_code, response.json())
         except requests.RequestException as e:
-            raise NotConnect(f"Ошибка сети: {e}")
+            # raise NotConnect(f"Ошибка сети: {e}")
             print(NotConnect(f"Ошибка сети: {e}"))
             return False
 
@@ -105,6 +105,7 @@ def synchro() -> bool:
         for row in sections:
             cursor.execute("UPDATE sections SET latest = TRUE WHERE id_section = ?", (row[0],))
         cursor.execute("UPDATE user SET latest = TRUE;")
+        cursor.execute("DELETE FROM deleted;")
         return True
 
 
@@ -134,7 +135,7 @@ def giga_photo(id_note: int, name_photo: str, query: str) -> str:
         if name_photo in itertools.chain(cursor.fetchall()):
             raise OccupiedName("photo", name_photo)
         try:
-            giga.gen_photo(query, f"/images/{id_note}/{name_photo}.png")
+            giga.gen_photo(query, f"imgs/{id_note}/{name_photo}.png")
         except ConnectError as e:
             raise NotConnect(str(e))
         cursor.execute("INSERT INTO photos (name, size, id_note) VALUES (?, ?, ?)",
@@ -198,8 +199,9 @@ def delete_note(id_note: int) -> None:
         cursor.execute("INSERT INTO deleted (name, id) VALUES (\"notes\", ?);", (id_note, ))
         cursor.execute("SELECT id_photo, name FROM photos WHERE id_note = ?;", (id_note,))
         photos = cursor.fetchall()
+        shutil.rmtree(f"imgs/{id_note}")
         for img in photos:
-            os.remove(f"images/{id_note}/{img[1]}")
+            # os.remove(f"imgs/{id_note}/{img[1]}")
             cursor.execute("DELETE FROM photos WHERE id_photo = ?;", (img[0],))
             cursor.execute("INSERT INTO deleted (name, id) VALUES (\"photos\", ?);", (img[0],))
         cursor.execute("UPDATE user SET latest = FALSE;")

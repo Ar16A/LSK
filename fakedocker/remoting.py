@@ -1,4 +1,5 @@
 import os
+import shutil
 
 from fastapi import FastAPI, UploadFile, File, Form, Body
 from fastapi.responses import StreamingResponse
@@ -80,8 +81,9 @@ def synchro_client(json_str: str = Form(...),
                     cursor.execute("SELECT name, id_local_note FROM photos WHERE id_user = ? AND id_local = ?;",
                                    (id_user, obj[1]))
                     photo = cursor.fetchone()
+                    shutil.rmtree(f"{id_user}/imgs/{photo[1]}")
                     if photo is not None:
-                        safe_remove(f"{id_user}/imgs/{photo[1]}/{photo[0]}")
+                        # safe_remove(f"{id_user}/imgs/{photo[1]}/{photo[0]}")
                         cursor.execute("DELETE FROM photos WHERE id_user = ? AND id_local = ?;",
                                        (id_user, obj[1]))
                 case "notes":
