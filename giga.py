@@ -86,7 +86,10 @@ def summary(text: str) -> str:
     return response.choices[0].message.content
 
 
-def gen_photo(query: str) -> bytes:
+def gen_photo(query: str, path: str = "") -> str:
+    if path == "":
+        path = "last_giga_image.png"
+
     giga = GigaChat(
         credentials="MDNiZWNiMmMtZWE5MS00MDY3LTlkYTAtNmQ5MjE0NmI3M2ViOjg5YTMxZjk1LTY1ZjYtNGE2YS1iYzZkLWRkMTlhYzFhMWQ1Mw==",
         verify_ssl_certs=False)
@@ -127,9 +130,8 @@ def gen_photo(query: str) -> bytes:
         raise NotPhoto
     image_data = giga.get_image(file_id.group(0))
     # Сохранение или обработка изображения
-    with open("image.png", "wb") as f:
+    with open(path, "wb") as f:
         f.write(base64.b64decode(image_data.content))
-    return base64.b64decode(image_data.content)
 
 
 def get_help(query: str) -> str:
