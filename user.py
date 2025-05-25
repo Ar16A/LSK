@@ -154,7 +154,7 @@ def giga_photo(id_note: int, name_photo: str, query: str) -> str:
     cursor = db.cursor()
     cursor.execute("SELECT name FROM photos WHERE id_note = ?;", (id_note,))
     # result = cursor.fetchall()
-    if name_photo in itertools.chain(cursor.fetchall()):
+    if f"{name_photo}.png" in itertools.chain(cursor.fetchall()):
         db.close()
         raise OccupiedName("photo", name_photo)
     try:
@@ -190,14 +190,16 @@ def resize_photo(id_photo: int, size: int) -> None:
     db.commit()
     db.close()
 
+
 def get_photos(id_note: int) -> list[tuple[int, int]]:
     db = sqlite3.connect("mainbase.db")
     print("mainbase.py открыта get_photos()")
     cursor = db.cursor()
     cursor.execute("SELECT id_photo, size FROM photos WHERE id_note = ?", (id_note,))
-    answer =  cursor.fetchall()
+    answer = cursor.fetchall()
     db.close()
     return answer
+
 
 def list_notes(id_folder: int) -> list[tuple[int, str]]:
     """Получение списка заметок из папки"""
@@ -227,14 +229,16 @@ def text_note(id_note: int) -> str:
         return note.read()
 
 
-def delete_note(id_note: int) -> None:
+def delete_note(id_note: int, flag: bool = True, db=None) -> None:
     """Удаление заметки по id"""
-    os.remove(f"notes/{id_note}.txt")
-    db = sqlite3.connect("mainbase.db")
+    if os.path.exists(f"notes/{id_note}.txt"):
+        os.remove(f"notes/{id_note}.txt")
+    if flag:
+        db = sqlite3.connect("mainbase.db")
     print("mainbase.py открыта delete_note()")
     cursor = db.cursor()
     cursor.execute("DELETE FROM notes WHERE id_note = ?;", (id_note,))
-    cursor.execute("INSERT INTO deleted (name, id) VALUES (\"notes\", ?);", (id_note, ))
+    cursor.execute("INSERT INTO deleted (name, id) VALUES (\"notes\", ?);", (id_note,))
     cursor.execute("SELECT id_photo, name FROM photos WHERE id_note = ?;", (id_note,))
     photos = cursor.fetchall()
     shutil.rmtree(f"imgs/{id_note}")
@@ -243,22 +247,26 @@ def delete_note(id_note: int) -> None:
         cursor.execute("DELETE FROM photos WHERE id_photo = ?;", (img[0],))
         cursor.execute("INSERT INTO deleted (name, id) VALUES (\"photos\", ?);", (img[0],))
     cursor.execute("UPDATE user SET latest = FALSE;")
-    db.commit()
-    db.close()
+    if flag:
+        db.commit()
+        db.close()
 
-def delete_folder(id_folder: int):
+
+def delete_folder(id_folder: int, flag: bool = True, db=None):
     """Удаление папки со всеми заметками внутри"""
-    db = sqlite3.connect("mainbase.db")
+    if flag:
+        db = sqlite3.connect("mainbase.db")
     print("mainbase.py открыта delete_folder()")
     cursor = db.cursor()
     cursor.execute("SELECT id_note FROM notes WHERE id_folder = ?", (id_folder,))
     for id_note in [x[0] for x in cursor.fetchall()]:
-        delete_note(id_note)
+        delete_note(id_note, False, db)
     cursor.execute("DELETE FROM folders WHERE id_folder = ?;", (id_folder,))
     cursor.execute("INSERT INTO deleted (name, id) VALUES (\"folders\", ?);", (id_folder,))
     cursor.execute("UPDATE user SET latest = FALSE;")
-    db.commit()
-    db.close()
+    if flag:
+        db.commit()
+        db.close()
 
 
 def save_note(id_note: int, text: str, name: str = "") -> None:
@@ -305,7 +313,7 @@ def save_note(id_note: int, text: str, name: str = "") -> None:
                 cursor.execute("INSERT INTO deleted (name, id) VALUES (\"photos\", ?)", (photo[0],))
             # else:
             #     cursor.execute("SELECT id_photo, name, size FROM photos WHERE id_note = ?", (id_note,))
-                # photos.append(cursor.fetchone())
+            # photos.append(cursor.fetchone())
 
     cursor.execute("UPDATE notes SET latest = FALSE WHERE id_note = ?", (id_note,))
     cursor.execute("SELECT id_section FROM folders WHERE id_folder = ?", (id_folder,))
@@ -315,32 +323,32 @@ def save_note(id_note: int, text: str, name: str = "") -> None:
     cursor.execute("UPDATE folders SET latest = FALSE WHERE id_folder = ?;", (id_folder,))
     cursor.execute("UPDATE user SET latest = FALSE;")
 
-# if not conn: return False
-# payload = {"id_local": id_note, "name": name, "id_user": id_user, "id_local_folder": id_folder, "photos": photos}
-# note = ("note", (str(id_note), open(f"notes/{id_note}.txt", "rb"), "application/octet-stream"))
-#
-# file_photos = []
-# for img in imgs_now:
-#     file_photos.append(
-#         ("photos", (f"{id_note}/{img}", open(f"imgs/{id_note}/{img}", "rb"), "application/octet-stream")))
+    # if not conn: return False
+    # payload = {"id_local": id_note, "name": name, "id_user": id_user, "id_local_folder": id_folder, "photos": photos}
+    # note = ("note", (str(id_note), open(f"notes/{id_note}.txt", "rb"), "application/octet-stream"))
+    #
+    # file_photos = []
+    # for img in imgs_now:
+    #     file_photos.append(
+    #         ("photos", (f"{id_note}/{img}", open(f"imgs/{id_note}/{img}", "rb"), "application/octet-stream")))
 
-# try:
-#     response = requests.post(__path_to_host__ + "notes/",
-#                              data={"json_str": json.dumps(payload)},
-#                              files=file_photos + [note])
-#     print(response.status_code, response.json())
-# except requests.RequestException as e:
-#     cursor.execute("UPDATE notes SET latest = FALSE WHERE id_note = ?", (id_note,))
-#     cursor.execute("SELECT id_section FROM folders WHERE id_folder = ?", (id_folder,))
-#     id_section = cursor.fetchone()[0]
-#     cursor.execute("UPDATE sections SET latest = FALSE WHERE id_section = ?;",
-#                    (id_section,))
-#     cursor.execute("UPDATE folders SET latest = FALSE WHERE id_folder = ?;", (id_folder,))
-#     cursor.execute("UPDATE user SET latest = FALSE;")
-#     # raise NotConnect(f"Ошибка сети: {e}")
-#     print(NotConnect(f"Ошибка сети: {e}"))
-#     return False
-# return True
+    # try:
+    #     response = requests.post(__path_to_host__ + "notes/",
+    #                              data={"json_str": json.dumps(payload)},
+    #                              files=file_photos + [note])
+    #     print(response.status_code, response.json())
+    # except requests.RequestException as e:
+    #     cursor.execute("UPDATE notes SET latest = FALSE WHERE id_note = ?", (id_note,))
+    #     cursor.execute("SELECT id_section FROM folders WHERE id_folder = ?", (id_folder,))
+    #     id_section = cursor.fetchone()[0]
+    #     cursor.execute("UPDATE sections SET latest = FALSE WHERE id_section = ?;",
+    #                    (id_section,))
+    #     cursor.execute("UPDATE folders SET latest = FALSE WHERE id_folder = ?;", (id_folder,))
+    #     cursor.execute("UPDATE user SET latest = FALSE;")
+    #     # raise NotConnect(f"Ошибка сети: {e}")
+    #     print(NotConnect(f"Ошибка сети: {e}"))
+    #     return False
+    # return True
     db.commit()
     db.close()
 
@@ -439,7 +447,7 @@ class Section:
         cursor = db.cursor()
         cursor.execute("SELECT id_folder FROM folders WHERE id_section = ?", (self.id_section,))
         for id_folder in [x[0] for x in cursor.fetchall()]:
-            delete_folder(id_folder)
+            delete_folder(id_folder, False, db)
         cursor.execute("DELETE FROM sections WHERE id_section = ?;", (self.id_section,))
         cursor.execute("INSERT INTO deleted (name, id) VALUES (\"sections\", ?);", (self.id_section,))
         cursor.execute("UPDATE user SET latest = FALSE;")
@@ -684,6 +692,7 @@ def __get_id_user__() -> int:
     db.close()
     return answer
 
+
 def is_sync() -> bool:
     db = sqlite3.connect("mainbase.db")
     # with sqlite3.connect("mainbase.db") as db:
@@ -694,6 +703,7 @@ def is_sync() -> bool:
     db.close()
     print("mainbase.py закрыта is_sync()")
     return bool(answer)
+
 
 def logout_user():
     # for i in range(8):
@@ -716,6 +726,7 @@ def logout_user():
         os.remove("last_drawing.png")
     shutil.rmtree("imgs")
     shutil.rmtree("notes")
+
 
 def cur_login() -> None | User:
     if not os.path.exists("mainbase.db"): return

@@ -82,7 +82,8 @@ def synchro_client(json_str: str = Form(...),
                                    (id_user, obj[1]))
                     photo = cursor.fetchone()
                     if photo is not None:
-                        shutil.rmtree(f"{id_user}/imgs/{photo[1]}")
+                        # shutil.rmtree(f"{id_user}/imgs/{photo[1]}/{photo[0]}")
+                        os.remove(f"{id_user}/imgs/{photo[1]}/{photo[0]}")
                         # safe_remove(f"{id_user}/imgs/{photo[1]}/{photo[0]}")
                         cursor.execute("DELETE FROM photos WHERE id_user = ? AND id_local = ?;",
                                        (id_user, obj[1]))
