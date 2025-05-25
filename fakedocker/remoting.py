@@ -1,4 +1,5 @@
 import os
+import shutil
 
 from fastapi import FastAPI, UploadFile, File, Form, Body
 from fastapi.responses import StreamingResponse
@@ -13,6 +14,11 @@ def check_connect():
     print({"status": 0})
     return {"status": 0}
 
+def safe_remove(path: str):
+    try:
+        os.remove(path)
+    except FileNotFoundError:
+        pass
 
 @app.post("/all/")
 def synchro_client(json_str: str = Form(...),
@@ -52,11 +58,12 @@ def synchro_client(json_str: str = Form(...),
                 cursor.execute('''UPDATE notes SET cnt_photos = ? WHERE id_local = ? AND id_user = ?''',
                                (note[2], note[0], id_user))
         for file in file_notes:
+            os.makedirs(f"{id_user}/imgs/{file.filename}", exist_ok=True)
             with open(f"{id_user}/notes/{file.filename}.txt", "wb") as f:
                 f.write(file.file.read())
 
         for photo in data["photos"]:
-            cursor.execute(select_exists("photo"), (photo[0], id_user))
+            cursor.execute(select_exists("photos"), (photo[0], id_user))
             if not cursor.fetchone()[0]:
                 cursor.execute('''INSERT INTO photos (id_local, name, size, id_local_note, id_user)
                                VALUES (?, ?, ?, ?, ?)''',
@@ -74,11 +81,13 @@ def synchro_client(json_str: str = Form(...),
                     cursor.execute("SELECT name, id_local_note FROM photos WHERE id_user = ? AND id_local = ?;",
                                    (id_user, obj[1]))
                     photo = cursor.fetchone()
-                    os.remove(f"{id_user}/imgs/{photo[1]}/{photo[0]}")
-                    cursor.execute("DELETE FROM photos WHERE id_user = ? AND id_local = ?;",
-                                   (id_user, obj[1]))
+                    shutil.rmtree(f"{id_user}/imgs/{photo[1]}")
+                    if photo is not None:
+                        # safe_remove(f"{id_user}/imgs/{photo[1]}/{photo[0]}")
+                        cursor.execute("DELETE FROM photos WHERE id_user = ? AND id_local = ?;",
+                                       (id_user, obj[1]))
                 case "notes":
-                    os.remove(f"{id_user}/notes/{obj[1]}.txt")
+                    safe_remove(f"{id_user}/notes/{obj[1]}.txt")
                     cursor.execute("DELETE FROM notes WHERE id_user = ? AND id_local = ?;",
                                    (id_user, obj[1]))
                 case _:
@@ -153,9 +162,6 @@ def get_user(data: dict = Body(...)):
         cursor.execute(f"SELECT * FROM users WHERE {"email" if '@' in login else "username"} = ?;",
                        (login,))
         answer = cursor.fetchone()
-        folders = []
-        notes = []
-        photos = []
         if answer is None:
             result = {"status": 2}
         elif password != answer[3]:
@@ -164,20 +170,14 @@ def get_user(data: dict = Body(...)):
             cursor.execute("SELECT * FROM sections WHERE id_user = ?;", (answer[0],))
             sections = cursor.fetchall()
 
-            for cur in sections:
-                cursor.execute("SELECT * FROM folders WHERE id_user = ? AND id_local_section = ?;",
-                               (cur[-1], cur[-2]))
-                folders += cursor.fetchall()
+            cursor.execute("SELECT * FROM folders WHERE id_user = ?;", (answer[0],))
+            folders = cursor.fetchall()
 
-            for cur in folders:
-                cursor.execute("SELECT * FROM notes WHERE id_user = ? AND id_local_folder = ?;",
-                               (cur[-1], cur[-2]))
-                notes += cursor.fetchall()
+            cursor.execute("SELECT * FROM notes WHERE id_user = ?;", (answer[0],))
+            notes = cursor.fetchall()
 
-            for cur in notes:
-                cursor.execute("SELECT * FROM photos WHERE id_user = ? AND id_local_note = ?;",
-                               (cur[-1], cur[-2]))
-                photos += cursor.fetchall()
+            cursor.execute("SELECT * FROM photos WHERE id_user = ?;", (answer[0],))
+            photos = cursor.fetchall()
 
             slicing = lambda data: [x[1:-1] for x in data]
 
@@ -194,9 +194,9 @@ def get_user(data: dict = Body(...)):
     with zipfile.ZipFile(zip_buffer, "w") as zf:
         zf.writestr("data.json", json.dumps(result))
         for cur_note in notes:
-            zf.write(f"{answer[0]}/notes/{cur_note[1]}", arcname=f"notes/{cur_note[1]}")
+            zf.write(f"{answer[0]}/notes/{cur_note[1]}.txt", arcname=f"notes/{cur_note[1]}.txt")
         for img in photos:
-            zf.write(f"{answer[0]}/images/{img[4]}/{img[2]}", arcname=f"images/{img[4]}/{img[2]}")
+            zf.write(f"{answer[0]}/imgs/{img[4]}/{img[2]}", arcname=f"imgs/{img[4]}/{img[2]}")
 
     zip_buffer.seek(0)
 
@@ -220,7 +220,7 @@ def new_user(data: dict = Body(...)):
             answer = int(check[0] == username) + int(check[1] == email) * 2
             print({"status": answer})
             return {"status": answer}
-        database.execute('''INSERT INTO users (username, email, password) VALUES (?, ?, ?);''',
+        cursor.execute('''INSERT INTO users (username, email, password) VALUES (?, ?, ?);''',
                          (username, email, password))
         id_user = cursor.lastrowid
     os.makedirs(f"{id_user}/notes", exist_ok=True)
