@@ -69,8 +69,8 @@ def synchro() -> bool:
                            (row[0],))
             cur_note = cursor.fetchall()
             for i in range(len(cur_note)):
-                file_photos.append(("file_photos",
-                                    (f"/{cur_note[i][-1]}/{cur_note[i][1]}",
+                file_photos.append(("photos",
+                                    (f"{cur_note[i][-1]}/{cur_note[i][1]}",
                                      open(f"imgs/{cur_note[i][-1]}/{cur_note[i][1]}", "rb"),
                                      "application/octet-stream")))
                 photos.append(cur_note[i])
@@ -158,6 +158,12 @@ def resize_photo(id_photo: int, size: int) -> None:
         cursor.execute("UPDATE notes SET latest = FALSE WHERE id_note = ?", (id_note,))
         cursor.execute("UPDATE folders SET latest = FALSE WHERE id_folder = ?", (id_folder,))
         cursor.execute("UPDATE sections SET latest = FALSE WHERE id_section = ?", (id_section,))
+
+def photo_sizes(id_note: int) -> tuple[int, ...]:
+    with sqlite3.connect("mainbase.db") as database:
+        cursor = database.cursor()
+        cursor.execute("SELECT size FROM photos WHERE id_note = ?", (id_note,))
+        return tuple(x[0] for x in cursor.fetchall())
 
 def list_notes(id_folder: int) -> list[tuple[int, str]]:
     """Получение списка заметок из папки"""
@@ -570,7 +576,7 @@ def login_user(login: str, password: str) -> User:
         for row in answer["photos"]:
             # with open(f"imgs/{row[3]}/{row[1]}", "wb") as img:
             #     img.write(row[4])
-            cursor.execute("INSERT INTO photos (id_photo, name, size, id_note, data) VALUES (?, ?, ?, ?, ?)",
+            cursor.execute("INSERT INTO photos (id_photo, name, size, id_note) VALUES (?, ?, ?, ?)",
                            (*row,))
 
     return User(*answer["user"], True)
