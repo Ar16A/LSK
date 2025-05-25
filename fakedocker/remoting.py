@@ -211,6 +211,7 @@ def new_user(data: dict = Body(...)):
     username = data["username"]
     email = data["email"]
     password = data["password"]
+    id_user = None
     with sqlite3.connect("rembase.db") as database:
         cursor = database.cursor()
         cursor.execute("SELECT username, email FROM users WHERE username = ? OR email = ?;", (username, email))
@@ -221,6 +222,9 @@ def new_user(data: dict = Body(...)):
             return {"status": answer}
         database.execute('''INSERT INTO users (username, email, password) VALUES (?, ?, ?);''',
                          (username, email, password))
+        id_user = cursor.lastrowid
+    os.makedirs(f"{id_user}/notes", exist_ok=True)
+    os.makedirs(f"{id_user}/imgs", exist_ok=True)
     print({"status": 0})
     return {"status": 0}
 

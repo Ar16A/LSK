@@ -58,7 +58,7 @@ def synchro() -> bool:
             cur_folder = cursor.fetchall()
             for i in range(len(cur_folder)):
                 file_notes.append(("file_notes",
-                                   (cur_folder[i][0], open(f"notes/{cur_folder[i][0]}.txt", "rb"),
+                                   (str(cur_folder[i][0]), open(f"notes/{cur_folder[i][0]}.txt", "rb"),
                                     "application/octet-stream")))
                 notes.append(cur_folder[i])
 
@@ -73,7 +73,7 @@ def synchro() -> bool:
                                     (f"/{cur_note[i][-1]}/{cur_note[i][1]}",
                                      open(f"imgs/{cur_note[i][-1]}/{cur_note[i][1]}", "rb"),
                                      "application/octet-stream")))
-                notes.append(cur_note[i])
+                photos.append(cur_note[i])
 
         cursor.execute("SELECT * FROM deleted;")
         deleted = cursor.fetchall()
@@ -84,13 +84,17 @@ def synchro() -> bool:
 
         payload = {"id_user": id_user, "sections": sections, "folders": folders,
                    "notes": notes, "photos": photos, "deleted": deleted, "seqs": seqs}
+
+        with open("out.json", "w", encoding="utf-8") as f:
+            json.dump(payload, f, ensure_ascii=False, indent=4)
+
         try:
             response = requests.post(__path_to_host__ + "all/",
                                      data={"json_str": json.dumps(payload)},
                                      files=file_photos + file_notes)
             print(response.status_code, response.json())
         except requests.RequestException as e:
-            # raise NotConnect(f"Ошибка сети: {e}")
+            raise NotConnect(f"Ошибка сети: {e}")
             print(NotConnect(f"Ошибка сети: {e}"))
             return False
 
@@ -104,8 +108,9 @@ def synchro() -> bool:
         return True
 
 
-def new_photo(id_note: int, path: str, size: int) -> str:
-    name = path.split('/')[-1]
+def new_photo(id_note: int, path: str, size: int, name: str = "") -> str:
+    if name == "":
+        name = path.split('/')[-1]
     with sqlite3.connect("mainbase.db") as database:
         cursor = database.cursor()
         cursor.execute("SELECT name FROM photos WHERE id_note = ?;", (id_note,))
