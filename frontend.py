@@ -1,5 +1,6 @@
 import re
 import sys
+
 from PyQt6.QtWidgets import (
     QMainWindow, QApplication, QVBoxLayout, QWidget, QStackedWidget, QTextBrowser,
     QLabel, QLineEdit, QPushButton, QTextEdit, QFormLayout, QMessageBox,
@@ -1329,11 +1330,11 @@ class MainWindow(QMainWindow):
             elif reply == QMessageBox.StandardButton.Cancel:
                 event.ignore()
                 return
-        try:
-            if self.current_user:
-                logout_user()
-        except Exception as e:
-            self.show_message("Ошибка", f"Ошибка при выходе: {str(e)}")
+        # try:
+        #     if self.current_user:
+        #         logout_user()
+        # except Exception as e:
+        #     self.show_message("Ошибка", f"Ошибка при выходе: {str(e)}")
         event.accept()
 
     def show_message(self, title, message):
