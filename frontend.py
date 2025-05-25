@@ -1,15 +1,16 @@
-import sys
 import re
+import sys
 from PyQt6.QtWidgets import (
     QMainWindow, QApplication, QVBoxLayout, QWidget, QStackedWidget, QTextBrowser,
     QLabel, QLineEdit, QPushButton, QTextEdit, QFormLayout, QMessageBox,
     QListWidget, QListWidgetItem, QHBoxLayout, QInputDialog, QSplitter, QMenu,
-    QTabWidget, QTabBar, QStyle, QFileDialog, QColorDialog, QStyleOptionTab, QDialog
+    QTabWidget, QTabBar, QStyle, QFileDialog, QColorDialog, QStyleOptionTab, QDialog, QComboBox
 )
-from PyQt6.QtGui import QFont, QAction, QColor, QPainter, QPalette
-from PyQt6.QtCore import Qt
+from PyQt6.QtGui import QFont, QAction, QColor, QPainter, QPixmap, QPen, QPalette
+from PyQt6.QtCore import Qt, QPoint
 from user import (
-    login_user, register_user, list_notes, save_note, folder_is_empty, text_note, delete_note, delete_folder, Section
+    login_user, register_user, list_notes, save_note, folder_is_empty, text_note,
+    delete_note, delete_folder, new_photo, cur_login, is_sync, logout_user, synchro, Section
 )
 from errors import OccupiedName, UserNotExists, IncorrectPassword, NotChange
 
@@ -171,11 +172,16 @@ class SectionsPage(QWidget):
         # noinspection PyUnresolvedReferences
         new_section_btn.clicked.connect(self.main_window.create_new_section)
 
+        sync_btn = StyledButton("Синхронизировать")
+        # noinspection PyUnresolvedReferences
+        sync_btn.clicked.connect(self.main_window.synchronize)
+
         logout_btn = StyledButton("Выйти")
         # noinspection PyUnresolvedReferences
         logout_btn.clicked.connect(self.main_window.logout)
 
         btn_layout.addWidget(new_section_btn)
+        btn_layout.addWidget(sync_btn)
         btn_layout.addWidget(logout_btn)
 
         layout.addWidget(title)
@@ -285,6 +291,248 @@ class NotePage(QWidget):
         self.setLayout(layout)
 
 
+class DrawingPage(QWidget):
+    def __init__(self, main_window):
+        super().__init__()
+        self.main_window = main_window
+        self.setMinimumSize(600, 500)
+
+        self.canvas = QPixmap(800, 600)
+        self.canvas.fill(Qt.GlobalColor.white)
+
+        self.last_point = None
+        self.drawing = False
+        self.pen_color = QColor(Qt.GlobalColor.black)
+        self.pen_width = 3
+        self.erasing = False
+        self.eraser_color = QColor(Qt.GlobalColor.white)
+
+        self.init_ui()
+
+    def init_ui(self):
+        layout = QVBoxLayout()
+        layout.setSpacing(10)
+        layout.setContentsMargins(15, 15, 15, 15)
+
+        title = QLabel("Рисование")
+        title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        title.setStyleSheet("""
+            font-size: 18px; 
+            font-weight: bold;
+            color: #8A2BE2;
+            margin-bottom: 10px;
+        """)
+
+        self.drawing_label = QLabel()
+        self.drawing_label.setPixmap(self.canvas)
+        self.drawing_label.setStyleSheet("background-color: white; border: 2px solid #8A2BE2;")
+        self.drawing_label.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft)
+        self.drawing_label.setScaledContents(False)
+        self.drawing_label.setMouseTracking(True)
+
+        tool_layout = QHBoxLayout()
+        tool_layout.setSpacing(10)
+
+        self.color_widget = QWidget()
+        color_layout = QHBoxLayout(self.color_widget)
+        color_layout.setContentsMargins(0, 0, 0, 0)
+
+        self.color_btn = StyledButton("Цвет")
+        # noinspection PyUnresolvedReferences
+        self.color_btn.clicked.connect(self.choose_color)
+
+        self.color_indicator = QLabel()
+        self.color_indicator.setFixedSize(30, 30)
+        self.color_indicator.setStyleSheet(
+            f"background: {self.pen_color.name()}; border: 1px solid #888; border-radius: 15px;")
+
+        color_layout.addWidget(self.color_btn)
+        color_layout.addWidget(self.color_indicator)
+
+        self.eraser_btn = StyledButton("🧽 Ластик")
+        # noinspection PyUnresolvedReferences
+        self.eraser_btn.clicked.connect(self.toggle_eraser)
+        self.update_eraser_btn_style()
+
+        self.size_combo = QComboBox()
+        self.size_combo.addItems(["1", "2", "3", "5", "8", "10", "15", "20"])
+        self.size_combo.setCurrentText("3")
+        # noinspection PyUnresolvedReferences
+        self.size_combo.currentTextChanged.connect(self.change_pen_width)
+        self.size_combo.setStyleSheet("""
+            QComboBox {
+                background: #8A2BE2;
+                color: white;
+                border-radius: 5px;
+                padding: 5px;
+                min-width: 60px;
+            }
+        """)
+
+        self.clear_btn = StyledButton("🧹 Очистить")
+        # noinspection PyUnresolvedReferences
+        self.clear_btn.clicked.connect(self.clear_canvas)
+
+        tool_layout.addWidget(self.color_widget)
+        tool_layout.addWidget(self.eraser_btn)
+        tool_layout.addWidget(QLabel("Размер:"))
+        tool_layout.addWidget(self.size_combo)
+        tool_layout.addWidget(self.clear_btn)
+
+        btn_layout = QHBoxLayout()
+        btn_layout.setSpacing(15)
+
+        self.save_btn = StyledButton("💾 Сохранить")
+        # noinspection PyUnresolvedReferences
+        self.save_btn.clicked.connect(self.save_drawing)
+
+        self.cancel_btn = StyledButton("❌ Отмена")
+        # noinspection PyUnresolvedReferences
+        self.cancel_btn.clicked.connect(self.main_window.return_to_previous_page)
+
+        btn_layout.addStretch()
+        btn_layout.addWidget(self.save_btn)
+        btn_layout.addWidget(self.cancel_btn)
+
+        layout.addWidget(title)
+        layout.addWidget(self.drawing_label, 1)
+        layout.addLayout(tool_layout)
+        layout.addLayout(btn_layout)
+        self.setLayout(layout)
+
+    def update_eraser_btn_style(self):
+        style = """
+            QPushButton {
+                background: %s;
+                color: white;
+                border-radius: 5px;
+                padding: 5px;
+                font-size: 17px;
+            }
+        """ % ("#462255" if self.erasing else "#8A2BE2")
+        self.eraser_btn.setStyleSheet(style)
+
+    def choose_color(self):
+        color = QColorDialog.getColor(self.pen_color, self, "Выберите цвет кисти")
+        if color.isValid():
+            self.pen_color = color
+            self.color_indicator.setStyleSheet(f"""
+                background: {color.name()}; 
+                border: 1px solid #888; 
+                border-radius: 15px;
+            """)
+            if self.erasing:
+                self.erasing = False
+                self.update_eraser_btn_style()
+
+    def toggle_eraser(self):
+        self.erasing = not self.erasing
+        self.update_eraser_btn_style()
+
+    def change_pen_width(self, width):
+        self.pen_width = int(width)
+
+    def clear_canvas(self):
+        self.canvas.fill(Qt.GlobalColor.white)
+        self.drawing_label.setPixmap(self.canvas)
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        label_size = self.drawing_label.size()
+        new_canvas = QPixmap(label_size)
+        new_canvas.fill(Qt.GlobalColor.white)
+        painter = QPainter(new_canvas)
+        painter.drawPixmap(0, 0, self.canvas.scaled(label_size, Qt.AspectRatioMode.KeepAspectRatioByExpanding))
+        painter.end()
+        self.canvas = new_canvas
+        self.drawing_label.setPixmap(self.canvas)
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
+            self.drawing = True
+            self.last_point = self.get_canvas_position(event.pos())
+            self.draw_point(self.last_point)
+
+    def mouseMoveEvent(self, event):
+        if self.drawing and (event.buttons() & Qt.MouseButton.LeftButton):
+            current_point = self.get_canvas_position(event.pos())
+            if self.last_point:
+                self.draw_line(self.last_point, current_point)
+            self.last_point = current_point
+
+    def mouseReleaseEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
+            self.drawing = False
+            self.last_point = None
+
+    def get_canvas_position(self, pos):
+        global_pos = self.drawing_label.mapToGlobal(QPoint(0, 0))
+        canvas_pos = self.mapToGlobal(pos)
+        x = canvas_pos.x() - global_pos.x()
+        y = canvas_pos.y() - global_pos.y()
+
+        label_size = self.drawing_label.size()
+        pixmap_size = self.canvas.size()
+        scale_x = pixmap_size.width() / label_size.width() if label_size.width() > 0 else 1
+        scale_y = pixmap_size.height() / label_size.height() if label_size.height() > 0 else 1
+        x = x * scale_x
+        y = y * scale_y
+
+        x = max(0, min(x, self.canvas.width()))
+        y = max(0, min(y, self.canvas.height()))
+        return QPoint(int(x), int(y))
+
+    def draw_point(self, point):
+        painter = QPainter(self.canvas)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        color = self.eraser_color if self.erasing else self.pen_color
+        painter.setPen(QPen(color, self.pen_width,
+                            Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
+        painter.drawPoint(point)
+        painter.end()
+        self.drawing_label.setPixmap(self.canvas)
+
+    def draw_line(self, start, end):
+        painter = QPainter(self.canvas)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        color = self.eraser_color if self.erasing else self.pen_color
+        painter.setPen(QPen(color, self.pen_width,
+                            Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
+        painter.drawLine(start, end)
+        painter.end()
+        self.drawing_label.setPixmap(self.canvas)
+
+    def save_drawing(self):
+        if not self.main_window.current_note_id:
+            self.main_window.show_message("Ошибка", "Сначала создайте заметку!")
+            return
+
+        drawing_name, ok = QInputDialog.getText(self, "Название рисунка", "Введите название рисунка:",
+                                                text="Рисунок_" + str(len(list_notes(
+                                                    self.main_window.current_folder_id or
+                                                    self.main_window.current_section.id_root)) + 1))
+        if not ok or not drawing_name.strip():
+            self.main_window.show_message("Ошибка", "Название рисунка не может быть пустым!")
+            return
+
+        if not drawing_name.endswith('.png'):
+            drawing_name += '.png'
+
+        filename = "last_drawing.png"
+        if not self.canvas.save(filename, "PNG"):
+            self.main_window.show_message("Ошибка", "Не удалось сохранить рисунок")
+            return
+        try:
+            saved_path = new_photo(self.main_window.current_note_id, filename, 700, drawing_name)
+            self.main_window.insert_drawing(saved_path)
+            self.main_window.return_to_previous_page()
+        except OccupiedName:
+            self.main_window.show_message("Ошибка", f"Рисунок с именем '{drawing_name}' уже существует!")
+            return
+        except Exception as e:
+            self.main_window.show_message("Ошибка", f"Не удалось сохранить изображение: {str(e)}")
+
+
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -293,9 +541,11 @@ class MainWindow(QMainWindow):
 
         self.current_user = None
         self.current_note_id = None
+        self.current_note_name = None
         self.current_folder_id = None
         self.current_section = None
         self.image_sizes = {}
+        self._is_programmatic_change = False
 
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
@@ -306,15 +556,28 @@ class MainWindow(QMainWindow):
         self.sections_page = SectionsPage(self)
         self.folder_page = FolderPage(self)
         self.note_page = NotePage(self)
+        self.drawing_page = DrawingPage(self)
 
         self.stacked_widget.addWidget(self.login_page)
         self.stacked_widget.addWidget(self.registration_page)
         self.stacked_widget.addWidget(self.sections_page)
         self.stacked_widget.addWidget(self.folder_page)
         self.stacked_widget.addWidget(self.note_page)
+        self.stacked_widget.addWidget(self.drawing_page)
 
         main_layout = QVBoxLayout(central_widget)
         main_layout.addWidget(self.stacked_widget)
+
+        # noinspection PyUnresolvedReferences
+        self.note_page.note_edit.cursorPositionChanged.connect(self.update_preview)
+        # noinspection PyUnresolvedReferences
+        self.note_page.note_edit.textChanged.connect(self.update_preview)
+
+        self.current_user = cur_login()
+        if not self.current_user:
+            self.stacked_widget.setCurrentIndex(1)
+        else:
+            self.show_sections()
 
         self.setStyleSheet("""
             QMainWindow {
@@ -347,10 +610,31 @@ class MainWindow(QMainWindow):
                 min-height: 30px;
             }
             QTabWidget::pane {
-                border: 1px solid #8A2BE2;
+                border: 5px solid #8A2BE2;
                 background: #C0C0C0;
             }
+            QMessageBox QLabel {
+                color: #FFFFFF;
+            }
+            QMessageBox QPushButton {
+                color: #FFFFFF;
+            }
         """)
+
+    def synchronize(self):
+        if not self.current_user:
+            self.show_message("Ошибка", "Вы не вошли в систему!")
+            return
+        if is_sync():
+            self.show_message("Успех", "Данные уже синхронизированы!")
+            return
+        try:
+            if synchro():
+                self.show_message("Успех", "Данные успешно синхронизированы!")
+            else:
+                self.show_message("Ошибка", "Не удалось синхронизировать данные. Возможно, нет подключения к интернету.")
+        except Exception as e:
+            self.show_message("Ошибка", f"Ошибка синхронизации: {str(e)}")
 
     def get_color_name(self, color):
         return color.name()
@@ -366,12 +650,14 @@ class MainWindow(QMainWindow):
             self.stacked_widget.setCurrentIndex(0)
             return
 
+        current_section_name = self.current_section.name if self.current_section else None
         self.sections_page.sections_tabs.clear()
 
         try:
             sections = self.current_user.list_sections()
             if not sections:
-                self.sections_page.sections_tabs.addTab(QLabel("У вас пока нет разделов. Создайте первый раздел!"), "Нет разделов")
+                self.sections_page.sections_tabs.addTab(QLabel("У вас пока нет разделов. Создайте первый раздел!"),
+                                                        "Нет разделов")
                 self.stacked_widget.setCurrentIndex(2)
                 return
 
@@ -381,43 +667,45 @@ class MainWindow(QMainWindow):
                     padding: 12px;
                     margin-right: 2px;
                     min-width: 100px;
-                    border-top-left-radius: 5px;
-                    border-top-right-radius: 5px;
+                    border-top-left: 5px;
+                    border-radius: 2px;
                 }
                 QTabWidget::pane {
-                    border: 1px solid #8A2BE2;
+                    border: 5px solid #8A2BE2;
                     background: #C0C0C0;
                 }
             """
             tab_bar = ColoredTabBar()
             self.sections_page.sections_tabs.setTabBar(tab_bar)
 
+            current_index = 0
             for index, section in enumerate(sections):
                 tab = QWidget()
                 tab_layout = QVBoxLayout()
                 tab_layout.setSpacing(10)
                 tab_layout.setContentsMargins(10, 10, 10, 10)
 
-                label = QLabel(f"Раздел: {section.name}\n")
+                label = QLabel(f"Разделение: {section.name}\n")
                 label.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
                 contents_list = QListWidget()
                 contents_list.setStyleSheet("""
                     QListWidget::item {
                         background-color: #8A2BE2;
-                        border-bottom: 4px solid #C0C0C0;
+                        border-bottom: 2px solid #C0C0C0;
                         border-radius: 10px;
                         padding: 8px;
-                        margin: 2px;
+                        margin-bottom: 2px;
                         min-height: 30px;
                     }
                 """)
                 contents_list.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
                 # noinspection PyUnresolvedReferences
-                contents_list.customContextMenuRequested.connect(lambda pos, s=section: self.show_context_menu(pos, s))
+                contents_list.customContextMenuRequested.connect(
+                    lambda pos, s=section: self.show_context_menu(pos, s))
                 # noinspection PyUnresolvedReferences
-                contents_list.itemDoubleClicked.connect(lambda item, s=section: [setattr(self, 'current_section', s),
-                                                                                 self.open_section_item(item)])
+                contents_list.itemClicked.connect(
+                    lambda item, s=section: [setattr(self, 'current_section', s), self.open_section_item(item)])
 
                 folders_and_notes = section.menu()
                 folders = folders_and_notes[0] if folders_and_notes and len(folders_and_notes) > 0 else []
@@ -440,11 +728,13 @@ class MainWindow(QMainWindow):
 
                 create_folder_btn = StyledButton("Создать папку")
                 # noinspection PyUnresolvedReferences
-                create_folder_btn.clicked.connect(lambda _, s=section: [setattr(self, 'current_section', s), self.start_create_folder()])
+                create_folder_btn.clicked.connect(
+                    lambda _, s=section: [setattr(self, 'current_section', s), self.start_create_folder()])
 
                 create_note_btn = StyledButton("Создать заметку")
                 # noinspection PyUnresolvedReferences
-                create_note_btn.clicked.connect(lambda _, s=section: [setattr(self, 'current_section', s), self.start_create_note()])
+                create_note_btn.clicked.connect(
+                    lambda _, s=section: [setattr(self, 'current_section', s), self.create_new_note()])
 
                 btn_layout.addWidget(create_folder_btn)
                 btn_layout.addWidget(create_note_btn)
@@ -461,8 +751,12 @@ class MainWindow(QMainWindow):
                 tab_index = self.sections_page.sections_tabs.addTab(tab, section.name)
                 self.sections_page.sections_tabs.tabBar().setTabData(tab_index, tab_color)
 
+                if section.name == current_section_name:
+                    current_index = index
+
             self.sections_page.sections_tabs.setStyleSheet(stylesheet)
             self.stacked_widget.setCurrentIndex(2)
+            self.sections_page.sections_tabs.setCurrentIndex(current_index)
 
         except Exception as e:
             self.show_message("Ошибка", f"Не удалось загрузить разделы: {str(e)}")
@@ -524,7 +818,7 @@ class MainWindow(QMainWindow):
                 self.show_message("Ошибка", f"Не удалось открыть заметку: {str(e)}")
 
     def show_tab_context_menu(self, position):
-        index = self.sections_page.sections_tabs.tabBar().tabAt(position)
+        index = self.sections_page.sections_tabs.tabAt(position)
         if index == -1:
             return
         section = self.current_user.list_sections()[index]
@@ -553,13 +847,40 @@ class MainWindow(QMainWindow):
         self.current_folder_id = None
         self.create_new_folder()
 
-    def start_create_note(self):
-        self.current_note_id = None
-        self.note_page.note_edit.clear()
-        self.stacked_widget.setCurrentIndex(4)
+    def create_new_note(self):
+        if not self.current_section:
+            self.show_message("Ошибка", "Сначала выберите раздел!")
+            return
+        folder_id = self.current_folder_id if self.current_folder_id is not None else self.current_section.id_root
+        while True:
+            note_name, ok = QInputDialog.getText(self, "Новая заметка", "Введите название заметки:")
+            if not ok:
+                return
+            if not note_name.strip():
+                self.show_message("Ошибка", "Название заметки не может быть пустым!")
+                continue
+            existing_notes = list_notes(folder_id)
+            existing_names = [note[1] for note in existing_notes]
+            if note_name in existing_names:
+                self.show_message("Ошибка", f"Заметка с именем '{note_name}' уже существует в этой папке!")
+                continue
+            break
+        try:
+            self.current_note_id = self.current_section.reserve_note(folder_id)
+            self.current_note_name = note_name
+            self.note_page.note_edit.clear()
+            self.stacked_widget.setCurrentIndex(4)
+        except Exception as e:
+            self.show_message("Ошибка", f"Не удалось создать заметку: {str(e)}")
+
+    def start_drawing(self):
+        self.stacked_widget.setCurrentIndex(5)
 
     def change_section(self, index):
-        pass
+        if index >= 0 and self.current_user:
+            sections = self.current_user.list_sections()
+            if index < len(sections):
+                self.current_section = sections[index]
 
     def create_new_section(self):
         name, ok = QInputDialog.getText(self, "Новый раздел", "Введите название раздела:")
@@ -568,21 +889,22 @@ class MainWindow(QMainWindow):
         color_dialog = QColorDialog(self)
         color_dialog.setWindowTitle("Выберите цвет для раздела")
         color_dialog.setCurrentColor(QColor(138, 43, 226))
+        color_dialog.setOption(QColorDialog.ColorDialogOption.ShowAlphaChannel, False)
         if color_dialog.exec() == QDialog.DialogCode.Accepted:
             selected_color = color_dialog.currentColor()
             color_name = selected_color.name()
             try:
                 self.current_user.create_section(name, color_name)
+                self.current_section = \
+                    [section for section in self.current_user.list_sections() if section.name == name][0]
                 self.show_message("Успех", "Раздел успешно создан!")
                 self.show_sections()
-                self.sections_page.sections_tabs.setCurrentIndex(self.sections_page.sections_tabs.count() - 1)
             except OccupiedName as e:
                 self.show_message("Ошибка", str(e))
             except Exception as e:
                 self.show_message("Ошибка", f"Не удалось создать раздел: {str(e)}")
 
     def go_back_to_sections(self):
-        self.current_section = None
         self.current_folder_id = None
         self.show_sections()
 
@@ -592,6 +914,10 @@ class MainWindow(QMainWindow):
         # noinspection PyUnresolvedReferences
         insert_image_action.triggered.connect(self.insert_image)
         menu.addAction(insert_image_action)
+        draw_action = QAction("Создать рисунок", self)
+        # noinspection PyUnresolvedReferences
+        draw_action.triggered.connect(self.start_drawing)
+        menu.addAction(draw_action)
         delete_note_action = QAction("Удалить заметку", self)
         # noinspection PyUnresolvedReferences
         delete_note_action.triggered.connect(self.delete_current_note)
@@ -599,13 +925,27 @@ class MainWindow(QMainWindow):
         menu.exec(self.note_page.menu_btn.mapToGlobal(self.note_page.menu_btn.rect().bottomLeft()))
 
     def show_editor_context_menu(self, position):
-        self.note_page.note_edit.createStandardContextMenu(position).exec(self.note_page.note_edit.mapToGlobal(position))
+        self.note_page.note_edit.createStandardContextMenu(position).exec(
+            self.note_page.note_edit.mapToGlobal(position))
 
     def insert_image(self):
-        file_path, _ = QFileDialog.getOpenFileName(self, "Выберите изображение", "", "Images (*.png *.jpg *.jpeg *.bmp *.gif)")
+        if not self.current_note_id:
+            self.show_message("Ошибка", "Сначала создайте заметку!")
+            return
+        file_path, _ = QFileDialog.getOpenFileName(self, "Выберите изображение", "",
+                                                   "Images (*.png *.jpg *.jpeg *.bmp *.gif)")
         if file_path:
-            image_name = file_path.split('/')[-1]
-            self.note_page.note_edit.insertPlainText(f"![{image_name}]({file_path})")
+            try:
+                saved_path = new_photo(self.current_note_id, file_path, 700)
+                image_name = file_path.split('/')[-1]
+                self.note_page.note_edit.insertPlainText(f"\n![{image_name}]({saved_path})\n")
+            except OccupiedName as e:
+                self.show_message("Ошибка", str(e))
+            except Exception as e:
+                self.show_message("Ошибка", f"Не удалось вставить изображение: {str(e)}")
+
+    def insert_drawing(self, filename):
+        self.note_page.note_edit.insertPlainText(f"\n![Рисунок]({filename})\n")
 
     def delete_current_note(self):
         if self.current_note_id:
@@ -635,73 +975,115 @@ class MainWindow(QMainWindow):
             menu.exec(self.note_page.preview.mapToGlobal(position))
 
     def resize_image(self, img_id):
-        current_size = self.image_sizes.get(img_id, 300)
-        size, ok = QInputDialog.getInt(self, "Изменить размер изображения", "Новый размер (пикселей):", current_size, 50, 1000, 25)
+        current_size = self.image_sizes.get(img_id, 700)
+        size, ok = QInputDialog.getInt(self, "Изменить размер изображения", "Новый размер (пиксели):", current_size, 50, 1200, 25)
         if ok:
             self.image_sizes[img_id] = size
             self.update_preview()
 
     def update_preview(self):
+        if self._is_programmatic_change:
+            return
+
         markdown_text = self.note_page.note_edit.toPlainText()
         html = self.markdown_to_html(markdown_text)
-        self.note_page.preview.setHtml(html)
+
+        self._is_programmatic_change = True
+        try:
+            self.note_page.preview.setHtml(html)
+        finally:
+            self._is_programmatic_change = False
+
+        cursor = self.note_page.note_edit.textCursor()
+        cursor_pos = cursor.position()
+        total_length = len(markdown_text)
+
+        scroll_bar = self.note_page.preview.verticalScrollBar()
+        if total_length > 0:
+            if len(markdown_text.split('\n')) <= 1 and total_length < 100:
+                scroll_bar.setValue(0)
+            else:
+                relative_pos = cursor_pos / total_length
+                max_scroll = scroll_bar.maximum()
+                target_scroll = int(max_scroll * relative_pos)
+                scroll_bar.setValue(target_scroll)
+        else:
+            scroll_bar.setValue(0)
 
     def markdown_to_html(self, markdown_text):
         html = """<html>
         <head>
         <style>
-            body { line-height: 1.6; color: #333; max-width: 800px; margin: 0 auto; padding: 20px; }
-            h1 { font-size: 2em; color: white; }
-            h2 { font-size: 1.75em; color: white; }
-            h3 { font-size: 1.5em; color: white; }
-            h4 { font-size: 1.25em; color: white; }
-            h5 { font-size: 1.1em; color: white; }
+            body { line-height: 1; font-size: 16px; color: white; max-width: 800px; margin: 0 auto; padding: 20px; 
+            font-family: Consolas, monospace; }
+            h1 { font-size: 24px; font-weight: bold; color: white; }
+            h2 { font-size: 22px; font-weight: bold; color: white; }
+            h3 { font-size: 20px; font-weight: bold; color: white; }
+            h4 { font-size: 18px; font-weight: bold; color: white; }
+            h5 { font-size: 16px; font-weight: bold; color: white; }
             strong, b { font-weight: bold; }
             em, i { font-style: italic; }
             s, strike, del { text-decoration: line-through; }
-            code { background-color: #f0f0f0; padding: 2px 4px; border-radius: 3px; font-family: monospace; }
-            pre { background-color: #f0f0f0; padding: 10px; border-radius: 5px; overflow-x: auto; }
+            code { background-color: grey; padding: 2px 4px; border-radius: 3px; font-family: monospace; }
+            pre { background-color: grey; padding: 10px; border-radius: 5px; overflow-x: auto; }
             a { color: #8A2BE2; text-decoration: underline; }
-            blockquote { border-left: 3px solid #8A2BE2; padding-left: 10px; color: #6a737d; font-style: italic; margin-left: 0; }
-            ul, ol { padding-left: 20px; }
-            li { margin: 5px 0; }
-            hr { border: none; border-top: 1px solid #8A2BE2; margin: 20px 0; }
+            a[href^="image:"] { color: #9055a2; text-decoration: none; }
+            img { display: block; margin: 10px 0; }
+            blockquote { color: #6a737d; font-style: italic; border-left: 3px solid #8A2BE2; padding-left: 10px; 
+            margin-left: 0; }
+            hr { border: none; border-top: 1px solid darkgrey; margin: 10px 0; }
+            table, th, td { color: #8A2BE2; border: 1px solid #ddd; padding: 8px; text-align: left; }
             table { border-collapse: collapse; width: 100%; margin: 15px 0; }
-            th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
             th { background-color: #f2f2f2; }
+            p { margin: 2px 0; }
+            br { line-height: 1.0; }
         </style>
         </head>
         <body>
         """
         lines = markdown_text.split('\n')
         in_code_block = False
-        in_list = False
-        list_type = None
-        current_indent = 0
         img_counter = 0
+        paragraph_open = False
 
         for line in lines:
+            line = line.rstrip()
             if line.strip() == '```':
+                if paragraph_open:
+                    html += "</p>"
+                    paragraph_open = False
                 in_code_block = not in_code_block
                 html += "<pre><code>" if in_code_block else "</code></pre>"
                 continue
             if in_code_block:
                 html += line + "\n"
                 continue
+
+            if not line.strip():
+                if paragraph_open:
+                    html += "<br>"
+                continue
+
+            if not paragraph_open:
+                html += "<p>"
+                paragraph_open = True
+
             img_matches = re.finditer(r"!\[(.*?)\]\((.*?)\)", line)
             for match in img_matches:
                 img_id = f"img{img_counter}"
                 img_counter += 1
                 alt_text = match.group(1)
                 img_url = match.group(2)
-                img_size = self.image_sizes.get(img_id, 300)
-                img_tag = f'<a name="image:{img_id}" href="image:{img_id}"><img src="{img_url}" alt="{alt_text}" style="max-width:{img_size}px; max-height:{img_size}px;"></a>'
+                img_size = self.image_sizes.get(img_id, 700)
+                img_tag = f'</p><a name="image:{img_id}" href="image:{img_id}"><img src="{img_url}" alt="{alt_text}" style="max-width:{img_size}px; max-height:{img_size}px;"></a><p>'
                 line = line.replace(match.group(0), img_tag)
-            line = re.sub(r"^# (.*?)$", r"<h1>\1</h1>", line)
-            line = re.sub(r"^## (.*?)$", r"<h2>\1</h2>", line)
-            line = re.sub(r"^### (.*?)$", r"<h3>\1</h3>", line)
-            line = re.sub(r"^#### (.*?)$", r"<h4>\1</h4>", line)
-            line = re.sub(r"^##### (.*?)$", r"<h5>\1</h5>", line)
+
+            line = re.sub(r"^# (.*?)$", r"</p><h1>\1</h1><p>", line)
+            line = re.sub(r"^## (.*?)$", r"</p><h2>\1</h2><p>", line)
+            line = re.sub(r"^### (.*?)$", r"</p><h3>\1</h3><p>", line)
+            line = re.sub(r"^#### (.*?)$", r"</p><h4>\1</h4><p>", line)
+            line = re.sub(r"^##### (.*?)$", r"</p><h5>\1</h5><p>", line)
+            line = re.sub(r"^###### (.*?)$", r"</p><h6>\1</h6><p>", line)
             line = re.sub(r"\*\*(.*?)\*\*", r"<strong>\1</strong>", line)
             line = re.sub(r"__(.*?)__", r"<strong>\1</strong>", line)
             line = re.sub(r"\*(.*?)\*", r"<em>\1</em>", line)
@@ -709,48 +1091,19 @@ class MainWindow(QMainWindow):
             line = re.sub(r"~~(.*?)~~", r"<s>\1</s>", line)
             line = re.sub(r"`(.+?)`", r"<code>\1</code>", line)
             line = re.sub(r"\[(.+?)\]\((.+?)\)", r'<a href="\2">\1</a>', line)
-            line = re.sub(r"^>\s(.*?)$", r"<blockquote>\1</blockquote>", line)
-            line = re.sub(r"^[-*_]{3,}$", r"<hr>", line)
-            m = re.match(r"^(\s*)([-*+])\s(.*)", line)
-            if m:
-                indent = len(m.group(1))
-                if not in_list:
-                    html += "<ul>\n"
-                    in_list = True
-                    list_type = 'ul'
-                elif indent > current_indent:
-                    html += "<ul>\n"
-                elif indent < current_indent:
-                    html += "</ul>\n"
-                current_indent = indent
-                html += "  " * (indent // 2) + f"<li>{m.group(3)}</li>\n"
-                continue
-            m = re.match(r"^(\s*)(\d+)\.\s(.*)", line)
-            if m:
-                indent = len(m.group(1))
-                if not in_list:
-                    html += "<ol>\n"
-                    in_list = True
-                    list_type = 'ol'
-                elif indent > current_indent:
-                    html += "<ol>\n"
-                elif indent < current_indent:
-                    html += "</ol>\n"
-                current_indent = indent
-                html += "  " * (indent // 2) + f"<li>{m.group(3)}</li>\n"
-                continue
-            if in_list:
-                html += f"</{list_type}>\n"
-                in_list = False
-                current_indent = 0
+            line = re.sub(r"^>\s(.*?)$", r"</p><blockquote>\1</blockquote><p>", line)
+            line = re.sub(r"^[-*_]{3,}$", r"</p><hr><p>", line)
+
             if "|" in line and "-" not in line:
                 cells = [cell.strip() for cell in line.split("|") if cell.strip()]
-                line = "<tr>" + "".join(f"<td>{cell}</td>" for cell in cells) + "</tr>"
+                line = "</p><table><tr>" + "".join(f"<td>{cell}</td>" for cell in cells) + "</tr></table><p>"
             elif "|" in line and "-" in line:
                 continue
-            html += line + "\n"
-        if in_list:
-            html += f"</{list_type}>"
+
+            html += line + "<br>"
+
+        if paragraph_open:
+            html += "</p>"
         html += "</body></html>"
         return html
 
@@ -772,14 +1125,16 @@ class MainWindow(QMainWindow):
             # noinspection PyUnresolvedReferences
             delete_action.triggered.connect(lambda: self.delete_note(item))
             menu.addAction(delete_action)
-        menu.exec(sender.mapToGlobal(position))
+        menu.exec(self.sender().mapToGlobal(position))
 
     def delete_folder(self, item, section):
         folder_id = item.data(Qt.ItemDataRole.UserRole)
         if not folder_is_empty(folder_id):
-            reply = QMessageBox.question(self, 'Удаление папки',
-                                        'Внутри папки есть заметки, которые будут удалены при удалении папки. Продолжить?',
-                                        QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+            reply = QMessageBox.question(
+                self, 'Удаление папки',
+                'Внутри папки есть заметки, которые будут удалены при удалении папки. Продолжить?',
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+            )
             if reply == QMessageBox.StandardButton.Yes:
                 try:
                     delete_folder(folder_id)
@@ -795,9 +1150,11 @@ class MainWindow(QMainWindow):
 
     def delete_note(self, item):
         note_id = item.data(Qt.ItemDataRole.UserRole)
-        reply = QMessageBox.question(self, 'Удаление заметки',
-                                     'Вы уверены, что хотите удалить заметку?',
-                                     QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+        reply = QMessageBox.question(
+            self, 'Удаление заметки',
+            'Вы уверены, что хотите удалить заметку?',
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
         if reply == QMessageBox.StandardButton.Yes:
             try:
                 delete_note(note_id)
@@ -817,7 +1174,7 @@ class MainWindow(QMainWindow):
         try:
             self.current_user = login_user(login, password)
             self.current_folder_id = None
-            self.show_message("Успех", "Вы успешно вошли в систему!")
+            self.show_message("Успех", "Вы успешно вошли!")
             self.show_sections()
         except UserNotExists as e:
             self.show_message("Ошибка входа", str(e))
@@ -836,7 +1193,8 @@ class MainWindow(QMainWindow):
             return
         for x in '<>@"\'/\\|{}[]()~:;,#$%^&*+=`!?':
             if x in username:
-                self.show_message("Ошибка", "Имя пользователя содержит запрещенные символы: <>@\"\'/\\|{}[]()~:;,#$%^&*+=`!?!")
+                self.show_message("Ошибка",
+                                "Имя пользователя содержит запрещенные символы: <>@\"\'/\\|{}[]()~:;,#$%^&*+=`!?")
                 return
         if '@' not in email or '.' not in email:
             self.show_message("Ошибка", "Пожалуйста, введите корректный email!")
@@ -858,23 +1216,21 @@ class MainWindow(QMainWindow):
             self.show_message("Ошибка", "Сначала выберите раздел!")
             return
         folder_name, ok = QInputDialog.getText(self, "Новая папка", "Введите название папки:")
-        if ok and folder_name.strip():
-            try:
-                self.current_section.create_folder(folder_name)
-                self.show_sections()
-            except Exception as e:
-                self.show_message("Ошибка", f"Не удалось создать папку: {str(e)}")
-
-    def create_new_note(self):
-        if not self.current_section:
-            self.show_message("Ошибка", "Сначала выберите раздел!")
+        if not ok:
             return
-        self.current_note_id = None
-        self.note_page.note_edit.clear()
-        self.stacked_widget.setCurrentIndex(4)
+        if not folder_name.strip():
+            self.show_message("Ошибка", "Название папки не может быть пустым!")
+            return
+        try:
+            self.current_section.create_folder(folder_name)
+            self.show_sections()
+        except Exception as e:
+            self.show_message("Ошибка", f"Не удалось создать папку: {str(e)}")
 
     def return_to_previous_page(self):
-        if self.current_folder_id:
+        if self.stacked_widget.currentIndex() == 5:
+            self.stacked_widget.setCurrentIndex(4)
+        elif self.current_folder_id:
             self.show_folder()
         else:
             self.show_sections()
@@ -886,31 +1242,99 @@ class MainWindow(QMainWindow):
             return
         try:
             if not self.current_note_id:
-                note_name, ok = QInputDialog.getText(self, "Новая заметка", "Введите название заметки:")
-                if not ok or not note_name.strip():
-                    return
-                folder_id = self.current_folder_id if self.current_folder_id is not None else self.current_section.id_root
-                self.current_section.create_note(note_name, text, folder_id)
-                self.show_message("Успех", "Заметка успешно создана!")
-            else:
-                try:
-                    save_note(self.current_note_id, text)
-                    self.show_message("Успех", "Заметка успешно сохранена!")
-                except NotChange as e:
-                    self.show_message("Предупреждение", str(e))
-                except OccupiedName as e:
-                    self.show_message("Ошибка", str(e))
+                self.show_message("Ошибка", "Заметка не создана!")
+                return
+            save_note(self.current_note_id, text,
+                     self.current_note_name if hasattr(self, 'current_note_name') and self.current_note_name else "")
+            self.show_message("Успех", "Заметка успешно сохранена!" if hasattr(self, 'current_note_name') and self.current_note_name else "Заметка успешно создана!")
+            self.current_note_name = None
             self.return_to_previous_page()
         except OccupiedName as e:
             self.show_message("Ошибка", str(e))
+        except NotChange:
+            self.show_message("Предупреждение", "Заметка не была изменена.")
         except Exception as e:
             self.show_message("Ошибка", f"Ошибка сохранения: {str(e)}")
 
     def logout(self):
-        self.current_user = None
-        self.current_note_id = None
-        self.current_folder_id = None
-        self.stacked_widget.setCurrentIndex(0)
+        if not self.current_user:
+            self.stacked_widget.setCurrentIndex(1)
+            return
+        if not is_sync():
+            reply = QMessageBox.question(
+                self, 'Выход',
+                'Данные не синхронизированы с сервером. Попытаться синхронизировать перед выходом?',
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No | QMessageBox.StandardButton.Cancel
+            )
+            if reply == QMessageBox.StandardButton.Yes:
+                try:
+                    if not synchro():
+                        self.show_message("Ошибка", "Не удалось синхронизировать с сервером. Возможно, нет соединения с интернетом.")
+                        reply = QMessageBox.question(
+                            self, 'Выход',
+                            'Синхронизация не удалась. Выйти без синхронизации?',
+                            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+                        )
+                        if reply != QMessageBox.StandardButton.Yes:
+                            return
+                except Exception as e:
+                    self.show_message("Ошибка", f"Ошибка синхронизации: {str(e)}")
+                    reply = QMessageBox.question(
+                        self, 'Выход',
+                        'Синхронизация не удалась. Выйти без синхронизации?',
+                        QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+                    )
+                    if reply != QMessageBox.StandardButton.Yes:
+                        return
+            elif reply == QMessageBox.StandardButton.Cancel:
+                return
+        try:
+            logout_user()
+            self.current_user = None
+            self.current_note_id = None
+            self.current_folder_id = None
+            self.stacked_widget.setCurrentIndex(1)
+        except Exception as e:
+            self.show_message("Ошибка", f"Ошибка при выходе: {str(e)}")
+
+    def closeEvent(self, event):
+        if self.current_user and not is_sync():
+            reply = QMessageBox.question(
+                self, 'Выход из приложения',
+                'Данные не синхронизированы с сервером. Попытаться синхронизировать перед выходом?',
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No | QMessageBox.StandardButton.Cancel
+            )
+            if reply == QMessageBox.StandardButton.Yes:
+                try:
+                    if not synchro():
+                        self.show_message("Ошибка", "Не удалось синхронизировать с сервером. Возможно, нет соединения.")
+                        reply = QMessageBox.question(
+                            self, 'Выход из приложения',
+                            'Синхронизация не удалась. Закрыть приложение без синхронизации?',
+                            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+                        )
+                        if reply != QMessageBox.StandardButton.Yes:
+                            event.ignore()
+                            return
+                except Exception as e:
+                    self.show_message("Ошибка", f"Ошибка синхронизации: {str(e)}")
+                    reply = QMessageBox.question(
+                        self, 'Выход из приложения',
+                        'Синхронизация не удалась. Закрыть приложение без синхронизации?',
+                        QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+                    )
+                    if reply != QMessageBox.StandardButton.Yes:
+                        event.ignore()
+                        return
+            elif reply == QMessageBox.StandardButton.Cancel:
+                event.ignore()
+                return
+        try:
+            if self.current_user:
+                logout_user()
+        except Exception as e:
+            self.show_message("Ошибка", f"Ошибка при выходе: {str(e)}")
+        event.accept()
 
     def show_message(self, title, message):
         msg_box = QMessageBox()
@@ -920,7 +1344,7 @@ class MainWindow(QMainWindow):
 
 
 app = QApplication(sys.argv)
-app.setFont(QFont("Consolas"))
+app.setFont(QFont("Consolas", 10))
 app.setStyle("Fusion")
 window = MainWindow()
 window.show()
