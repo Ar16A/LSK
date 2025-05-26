@@ -1,12 +1,12 @@
 import sqlite3
 import os
 
-if os.path.exists("fakedocker/rembase.db"):
-    os.remove("fakedocker/rembase.db")
-if os.path.exists("mainbase.db"):
-    os.remove("mainbase.db")
+if os.path.exists("Docker_part/rembase.db"):
+    os.remove("Docker_part/rembase.db")
+# if os.path.exists("mainbase.db"):
+#     os.remove("mainbase.db")
 
-with sqlite3.connect("fakedocker/rembase.db") as database:
+with sqlite3.connect("Docker_part/rembase.db") as database:
     cursor = database.cursor()
 
     cursor.execute('''CREATE TABLE users (

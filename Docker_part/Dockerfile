@@ -9,7 +9,8 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY remoting.py .
-COPY rembase.db .
+COPY start.py .
+RUN python3 start.py
 
 EXPOSE 8000
 

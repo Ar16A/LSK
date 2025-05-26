@@ -94,8 +94,8 @@ def synchro() -> bool:
     payload = {"id_user": id_user, "sections": sections, "folders": folders,
                "notes": notes, "photos": photos, "deleted": deleted, "seqs": seqs}
 
-    with open("out.json", "w", encoding="utf-8") as f:
-        json.dump(payload, f, ensure_ascii=False, indent=4)
+    # with open("out.json", "w", encoding="utf-8") as f:
+    #     json.dump(payload, f, ensure_ascii=False, indent=4)
 
     try:
         response = requests.post(__path_to_host__ + "all/",
@@ -538,6 +538,8 @@ def login_user(login: str, password: str) -> User:
 
             zf.extractall()
         # print(response.status_code, response.json())
+        if os.path.exists("data.json"):
+            os.remove("data.json")
     except requests.RequestException as e:
         raise NotConnect(f"Ошибка сети: {e}")
     match answer["status"]:

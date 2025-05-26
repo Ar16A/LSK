@@ -1,16 +1,8 @@
 from httpx import ConnectError
-# from langchain_core.messages import HumanMessage, SystemMessage
-# from langchain_gigachat.chat_models import GigaChat
 from gigachat import GigaChat
 from gigachat.models import Chat, Messages, MessagesRole
 import re
 import base64
-
-# from langsmith import expect
-# from pyexpat.errors import messages
-# from sympy import content
-# from sympy.stats import Expectation
-
 
 class TooMany(RuntimeError):
     def __str__(self):
