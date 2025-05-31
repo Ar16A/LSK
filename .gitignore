@@ -1,0 +1,14 @@
+.env
+venv/
+imgs/
+notes/
+mainbase.db
+*.json
+.idea/
+dist/
+tmp/
+Docker_part/
+!Docker_part/Dockerfile
+!Docker_part/remoting.py
+!Docker_part/requirements.txt
+!Docker_part/start.py
