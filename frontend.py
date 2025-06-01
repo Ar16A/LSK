@@ -1523,25 +1523,29 @@ class MainWindow(QMainWindow):
             self.stacked_widget.setCurrentIndex(1)
             self.clear_login_registration_fields()
             return
-        if not is_sync():
+
+        sync_result = is_sync()
+
+        if not sync_result:
             reply = QMessageBox.question(
                 self, 'Выход',
                 'Данные не синхронизированы с сервером. Попытаться синхронизировать перед выходом?',
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No | QMessageBox.StandardButton.Cancel
             )
+
             if reply == QMessageBox.StandardButton.Yes:
                 try:
-                    if not synchro():
+                    sync_result = synchro()
+                    if not sync_result:
                         self.show_message("Ошибка",
-                                          "Не удалось синхронизировать с сервером. Возможно, нет соединения с"
-                                          " интернетом.")
+                                          "Не удалось синхронизировать с сервером."
+                                          " Возможно, нет соединения с интернетом.")
                         reply = QMessageBox.question(
                             self, 'Выход',
                             'Синхронизация не удалась. Выйти без синхронизации?',
                             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
                         )
-                        if reply != QMessageBox.StandardButton.Yes:
-                            return
+                        sync_result = (reply == QMessageBox.StandardButton.Yes)
                 except Exception as e:
                     self.show_message("Ошибка", f"Ошибка синхронизации: {str(e)}")
                     reply = QMessageBox.question(
@@ -1549,19 +1553,22 @@ class MainWindow(QMainWindow):
                         'Синхронизация не удалась. Выйти без синхронизации?',
                         QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
                     )
-                    if reply != QMessageBox.StandardButton.Yes:
-                        return
-            elif reply == QMessageBox.StandardButton.Cancel:
+                    sync_result = (reply == QMessageBox.StandardButton.Yes)
+            elif reply == QMessageBox.StandardButton.No:
+                sync_result = True
+            else:
                 return
-        try:
-            logout_user()
-            self.current_user = None
-            self.current_note_id = None
-            self.current_folder_id = None
-            self.stacked_widget.setCurrentIndex(0)
-            self.clear_login_registration_fields()
-        except Exception as e:
-            self.show_message("Ошибка", f"Ошибка при выходе: {str(e)}")
+
+        if sync_result:
+            try:
+                logout_user()
+                self.current_user = None
+                self.current_note_id = None
+                self.current_folder_id = None
+                self.stacked_widget.setCurrentIndex(0)
+                self.clear_login_registration_fields()
+            except Exception as e:
+                self.show_message("Ошибка", f"Ошибка при выходе: {str(e)}")
 
     def closeEvent(self, event):
         if self.current_user and not is_sync():
